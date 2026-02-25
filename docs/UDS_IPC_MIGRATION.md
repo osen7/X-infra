@@ -19,8 +19,8 @@
 #### Unix 平台
 - 使用 `tokio::net::UnixListener` 和 `UnixStream`
 - Socket 路径优先级：
-  1. `/var/run/xctl.sock`（系统级，需要 root 权限）
-  2. `~/.xctl/xctl.sock`（用户级，自动回退）
+  1. `/var/run/ark.sock`（系统级，需要 root 权限）
+  2. `~/.ark/ark.sock`（用户级，自动回退）
 - Socket 文件权限：`chmod 660`（rw-rw----）
 - 自动清理：daemon 退出时删除 Socket 文件
 
@@ -40,23 +40,23 @@
 #### Unix 平台
 ```bash
 # 使用默认 Socket 路径
-xctl run
-xctl ps
-xctl why <pid>
-xctl diag <pid>
+ark run
+ark ps
+ark why <pid>
+ark diag <pid>
 
 # 指定自定义 Socket 路径
-xctl run --socket-path /tmp/xctl.sock
-xctl ps --socket-path /tmp/xctl.sock
+ark run --socket-path /tmp/ark.sock
+ark ps --socket-path /tmp/ark.sock
 ```
 
 #### Windows 平台
 ```bash
 # 使用默认端口
-xctl run
-xctl ps
-xctl why <pid> --port 9090
-xctl diag <pid> --port 9090
+ark run
+ark ps
+ark why <pid> --port 9090
+ark diag <pid> --port 9090
 ```
 
 ### 4. 权限控制
@@ -70,13 +70,13 @@ xctl diag <pid> --port 9090
 #### 使用场景
 ```bash
 # 场景 1：系统级部署（需要 root）
-sudo xctl run
-# Socket: /var/run/xctl.sock (root:root, 660)
+sudo ark run
+# Socket: /var/run/ark.sock (root:root, 660)
 # 只有 root 和 wheel 组可以访问
 
 # 场景 2：用户级部署
-xctl run
-# Socket: ~/.xctl/xctl.sock (user:user, 660)
+ark run
+# Socket: ~/.ark/ark.sock (user:user, 660)
 # 只有该用户和同组用户可以访问
 ```
 
@@ -106,7 +106,7 @@ use tokio::net::{TcpListener, TcpStream};
 ```rust
 #[cfg(unix)]
 pub fn default_socket_path() -> PathBuf {
-    let system_path = PathBuf::from("/var/run/xctl.sock");
+    let system_path = PathBuf::from("/var/run/ark.sock");
     if std::fs::metadata("/var/run").is_ok() {
         system_path
     } else {
@@ -114,8 +114,8 @@ pub fn default_socket_path() -> PathBuf {
         let mut home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
-        home.push(".xctl");
-        home.push("xctl.sock");
+        home.push(".ark");
+        home.push("ark.sock");
         home
     }
 }
@@ -137,20 +137,20 @@ pub fn default_socket_path() -> PathBuf {
 
 ```bash
 # Unix (自动选择路径)
-$ xctl run
-[xctl] 启动事件总线...
-[xctl] IPC 服务器已启动，监听 Unix Socket: /var/run/xctl.sock
-[xctl] 按 Ctrl+C 退出
+$ ark run
+[ark] 启动事件总线...
+[ark] IPC 服务器已启动，监听 Unix Socket: /var/run/ark.sock
+[ark] 按 Ctrl+C 退出
 
 # 或指定自定义路径
-$ xctl run --socket-path /tmp/xctl.sock
-[xctl] IPC 服务器已启动，监听 Unix Socket: /tmp/xctl.sock
+$ ark run --socket-path /tmp/ark.sock
+[ark] IPC 服务器已启动，监听 Unix Socket: /tmp/ark.sock
 ```
 
 ### 查询进程
 
 ```bash
-$ xctl ps
+$ ark ps
 PID      | JOB_ID       | RESOURCES           | STATE
 ----------------------------------------------------------------
 12345    | job-001      | gpu-0, gpu-1        | running
@@ -159,8 +159,8 @@ PID      | JOB_ID       | RESOURCES           | STATE
 ### 诊断进程
 
 ```bash
-$ xctl diag 12345
-[xctl] 正在诊断进程 12345...
+$ ark diag 12345
+[ark] 正在诊断进程 12345...
 [AI 诊断报告]
 ...
 ```

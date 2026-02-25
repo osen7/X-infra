@@ -8,8 +8,8 @@ mod metrics;
 mod audit;
 
 use clap::{Parser, Subcommand};
-use xctl_core::event::{Event, EventBus};
-use xctl_core::graph::StateGraph;
+use ark_core::event::{Event, EventBus};
+use ark_core::graph::StateGraph;
 use ipc::{IpcClient, IpcServer, default_socket_path};
 use plugin::SubprocessProbe;
 use exec::{SystemActuator, FixEngine};
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 const DEFAULT_IPC_PORT: u16 = 9090;
 
 #[derive(Parser)]
-#[command(name = "xctl")]
+#[command(name = "ark")]
 #[command(about = "极简主义异构 AI 算力集群管控底座", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -36,7 +36,7 @@ enum Commands {
     /// 启动后台 Daemon 模式（运行事件总线和探针）
     Run {
         #[cfg(unix)]
-        /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
+        /// Unix Domain Socket 路径（默认: /var/run/ark.sock 或 ~/.ark/ark.sock）
         #[arg(long)]
         socket_path: Option<PathBuf>,
         #[cfg(windows)]
@@ -53,7 +53,7 @@ enum Commands {
     /// 查询当前活跃进程列表
     Ps {
         #[cfg(unix)]
-        /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
+        /// Unix Domain Socket 路径（默认: /var/run/ark.sock 或 ~/.ark/ark.sock）
         #[arg(long)]
         socket_path: Option<PathBuf>,
         #[cfg(windows)]
@@ -66,7 +66,7 @@ enum Commands {
         /// 目标进程 PID
         pid: u32,
         #[cfg(unix)]
-        /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
+        /// Unix Domain Socket 路径（默认: /var/run/ark.sock 或 ~/.ark/ark.sock）
         #[arg(long)]
         socket_path: Option<PathBuf>,
         #[cfg(windows)]
@@ -84,7 +84,7 @@ enum Commands {
         /// 目标进程 PID
         pid: u32,
         #[cfg(unix)]
-        /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
+        /// Unix Domain Socket 路径（默认: /var/run/ark.sock 或 ~/.ark/ark.sock）
         #[arg(long)]
         socket_path: Option<PathBuf>,
         #[cfg(windows)]
@@ -102,11 +102,11 @@ enum Commands {
     Fix {
         /// 目标进程 PID
         pid: u32,
-        /// 审计日志文件路径（可选，如 /var/log/xctl/audit.log）
+        /// 审计日志文件路径（可选，如 /var/log/ark/audit.log）
         #[arg(long)]
         audit_log: Option<PathBuf>,
         #[cfg(unix)]
-        /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
+        /// Unix Domain Socket 路径（默认: /var/run/ark.sock 或 ~/.ark/ark.sock）
         #[arg(long)]
         socket_path: Option<PathBuf>,
         #[cfg(windows)]
@@ -222,7 +222,7 @@ async fn run_daemon(
     probe_path: Option<PathBuf>,
     hub_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[xctl] 启动事件总线...");
+    println!("[ark] 启动事件总线...");
     
     // 创建事件总线
     let mut bus = EventBus::new(1000);
@@ -260,7 +260,7 @@ async fn run_daemon(
                     }
                 });
             
-            println!("[xctl] Prometheus Metrics 端点: http://0.0.0.0:9091/metrics");
+            println!("[ark] Prometheus Metrics 端点: http://0.0.0.0:9091/metrics");
             warp::serve(routes)
                 .run(([0, 0, 0, 0], 9091))
                 .await;
@@ -299,13 +299,13 @@ async fn run_daemon(
                 );
                 
                 if let Err(e) = probe.start_stream(tx).await {
-                    eprintln!("[xctl] 外部探针异常退出: {}", e);
+                    eprintln!("[ark] 外部探针异常退出: {}", e);
                 }
             } else {
                 // 使用内置 dummy_probe（向后兼容）
-                eprintln!("[xctl] 警告：使用内置 dummy_probe，建议使用 --probe 指定外部探针脚本");
+                eprintln!("[ark] 警告：使用内置 dummy_probe，建议使用 --probe 指定外部探针脚本");
                 if let Err(e) = event::dummy_probe(tx).await {
-                    eprintln!("[xctl] 内置探针异常退出: {}", e);
+                    eprintln!("[ark] 内置探针异常退出: {}", e);
                 }
             }
         })
@@ -324,11 +324,11 @@ async fn run_daemon(
                         metrics.record_event(&event.event_type);
                         
                         if let Err(e) = graph.process_event(&event).await {
-                            eprintln!("[xctl] 处理事件失败: {}", e);
+                            eprintln!("[ark] 处理事件失败: {}", e);
                         }
                     }
                     None => {
-                        eprintln!("[xctl] 事件通道已关闭");
+                        eprintln!("[ark] 事件通道已关闭");
                         break;
                     }
                 }
@@ -345,18 +345,18 @@ async fn run_daemon(
         tokio::spawn(async move {
             let server = IpcServer::new(graph, Some(socket_path_clone));
             if let Err(e) = server.serve().await {
-                eprintln!("[xctl] IPC 服务器异常退出: {}", e);
+                eprintln!("[ark] IPC 服务器异常退出: {}", e);
             }
         })
     };
 
-    println!("[xctl] 探针已启动，状态图已初始化");
-    println!("[xctl] IPC 服务器已启动，监听 Unix Socket: {}", socket_path.display());
-    println!("[xctl] 按 Ctrl+C 退出\n");
+    println!("[ark] 探针已启动，状态图已初始化");
+    println!("[ark] IPC 服务器已启动，监听 Unix Socket: {}", socket_path.display());
+    println!("[ark] 按 Ctrl+C 退出\n");
 
     // 等待退出信号
     tokio::signal::ctrl_c().await?;
-    println!("\n[xctl] 收到退出信号，正在关闭...");
+    println!("\n[ark] 收到退出信号，正在关闭...");
     
     probe_handle.abort();
     graph_handle.abort();
@@ -367,11 +367,11 @@ async fn run_daemon(
     // 清理 Socket 文件
     if socket_path.exists() {
         if let Err(e) = std::fs::remove_file(&socket_path) {
-            eprintln!("[xctl] 警告：删除 Socket 文件失败: {}", e);
+            eprintln!("[ark] 警告：删除 Socket 文件失败: {}", e);
         }
     }
 
-    println!("[xctl] 退出完成");
+    println!("[ark] 退出完成");
     Ok(())
 }
 
@@ -381,7 +381,7 @@ async fn run_daemon(
     probe_path: Option<PathBuf>,
     hub_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[xctl] 启动事件总线...");
+    println!("[ark] 启动事件总线...");
     
     // 创建事件总线
     let mut bus = EventBus::new(1000);
@@ -401,12 +401,12 @@ async fn run_daemon(
                 );
                 
                 if let Err(e) = probe.start_stream(tx).await {
-                    eprintln!("[xctl] 外部探针异常退出: {}", e);
+                    eprintln!("[ark] 外部探针异常退出: {}", e);
                 }
             } else {
-                eprintln!("[xctl] 警告：使用内置 dummy_probe，建议使用 --probe 指定外部探针脚本");
+                eprintln!("[ark] 警告：使用内置 dummy_probe，建议使用 --probe 指定外部探针脚本");
                 if let Err(e) = event::dummy_probe(tx).await {
-                    eprintln!("[xctl] 内置探针异常退出: {}", e);
+                    eprintln!("[ark] 内置探针异常退出: {}", e);
                 }
             }
         })
@@ -418,10 +418,10 @@ async fn run_daemon(
         let node_id = get_node_id();
         let mut forwarder = HubForwarder::new(url.clone(), node_id.clone());
         if let Err(e) = forwarder.connect().await {
-            eprintln!("[xctl] 警告：无法连接到 Hub {}: {}，将继续运行但不推送事件", url, e);
+            eprintln!("[ark] 警告：无法连接到 Hub {}: {}，将继续运行但不推送事件", url, e);
         } else {
             hub_forwarder = Some(forwarder);
-            println!("[xctl] Hub 转发器已启动，节点ID: {}", node_id);
+            println!("[ark] Hub 转发器已启动，节点ID: {}", node_id);
         }
     }
 
@@ -436,7 +436,7 @@ async fn run_daemon(
                     Some(event) => {
                         // 更新本地图
                         if let Err(e) = graph.process_event(&event).await {
-                            eprintln!("[xctl] 处理事件失败: {}", e);
+                            eprintln!("[ark] 处理事件失败: {}", e);
                         }
                         
                         // 推送到 Hub（如果配置了且事件需要推送）
@@ -444,13 +444,13 @@ async fn run_daemon(
                             let forwarder = forwarder_arc.read().await;
                             if forwarder.should_forward(&event).await {
                                 if let Err(e) = forwarder.forward_event(event.clone()).await {
-                                    eprintln!("[xctl] 推送事件到 Hub 失败: {}", e);
+                                    eprintln!("[ark] 推送事件到 Hub 失败: {}", e);
                                 }
                             }
                         }
                     }
                     None => {
-                        eprintln!("[xctl] 事件通道已关闭");
+                        eprintln!("[ark] 事件通道已关闭");
                         break;
                     }
                 }
@@ -464,24 +464,24 @@ async fn run_daemon(
         tokio::spawn(async move {
             let server = IpcServer::new(graph, port);
             if let Err(e) = server.serve().await {
-                eprintln!("[xctl] IPC 服务器异常退出: {}", e);
+                eprintln!("[ark] IPC 服务器异常退出: {}", e);
             }
         })
     };
 
-    println!("[xctl] 探针已启动，状态图已初始化");
-    println!("[xctl] IPC 服务器已启动，监听端口 {}", port);
-    println!("[xctl] 按 Ctrl+C 退出\n");
+    println!("[ark] 探针已启动，状态图已初始化");
+    println!("[ark] IPC 服务器已启动，监听端口 {}", port);
+    println!("[ark] 按 Ctrl+C 退出\n");
 
     // 等待退出信号
     tokio::signal::ctrl_c().await?;
-    println!("\n[xctl] 收到退出信号，正在关闭...");
+    println!("\n[ark] 收到退出信号，正在关闭...");
     
     probe_handle.abort();
     graph_handle.abort();
     ipc_handle.abort();
 
-    println!("[xctl] 退出完成");
+    println!("[ark] 退出完成");
     Ok(())
 }
 
@@ -492,8 +492,8 @@ async fn query_processes(socket_path: Option<PathBuf>) -> Result<(), Box<dyn std
     
     // 检查 daemon 是否运行
     if !client.ping().await? {
-        eprintln!("[xctl] 错误：无法连接到 daemon");
-        eprintln!("[xctl] 请先运行: xctl run");
+        eprintln!("[ark] 错误：无法连接到 daemon");
+        eprintln!("[ark] 请先运行: ark run");
         return Err("daemon 未运行".into());
     }
 
@@ -562,8 +562,8 @@ async fn query_processes(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     
     // 检查 daemon 是否运行
     if !client.ping().await? {
-        eprintln!("[xctl] 错误：无法连接到 daemon (端口 {})", port);
-        eprintln!("[xctl] 请先运行: xctl run");
+        eprintln!("[ark] 错误：无法连接到 daemon (端口 {})", port);
+        eprintln!("[ark] 请先运行: ark run");
         return Err("daemon 未运行".into());
     }
 
@@ -636,8 +636,8 @@ async fn query_why(pid: u32, socket_path: Option<PathBuf>) -> Result<(), Box<dyn
     
     // 检查 daemon 是否运行
     if !client.ping().await? {
-        eprintln!("[xctl] 错误：无法连接到 daemon");
-        eprintln!("[xctl] 请先运行: xctl run");
+        eprintln!("[ark] 错误：无法连接到 daemon");
+        eprintln!("[ark] 请先运行: ark run");
         return Err("daemon 未运行".into());
     }
 
@@ -692,15 +692,15 @@ async fn query_why(pid: u32, socket_path: Option<PathBuf>) -> Result<(), Box<dyn
 
 /// 强制终止进程
 async fn zap_process(pid: u32) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[xctl] 正在终止进程 {}...", pid);
+    println!("[ark] 正在终止进程 {}...", pid);
     
     let actuator = SystemActuator::new();
     match actuator.execute(pid, "zap").await {
         Ok(_) => {
-            println!("[xctl] 进程 {} 已成功终止", pid);
+            println!("[ark] 进程 {} 已成功终止", pid);
         }
         Err(e) => {
-            eprintln!("[xctl] 终止进程失败: {}", e);
+            eprintln!("[ark] 终止进程失败: {}", e);
             return Err(e.into());
         }
     }
@@ -717,8 +717,8 @@ async fn query_why(pid: u32, port: u16) -> Result<(), Box<dyn std::error::Error>
     
     // 检查 daemon 是否运行
     if !client.ping().await? {
-        eprintln!("[xctl] 错误：无法连接到 daemon (端口 {})", port);
-        eprintln!("[xctl] 请先运行: xctl run");
+        eprintln!("[ark] 错误：无法连接到 daemon (端口 {})", port);
+        eprintln!("[ark] 请先运行: ark run");
         return Err("daemon 未运行".into());
     }
 
@@ -779,10 +779,10 @@ async fn diagnose_process(
     use colored::*;
 
     println!(
-        "[xctl] 正在诊断进程 {}...",
+        "[ark] 正在诊断进程 {}...",
         pid.to_string().bright_green()
     );
-    println!("[xctl] 收集诊断信息...\n");
+    println!("[ark] 收集诊断信息...\n");
 
     // 如果没有指定规则目录，尝试使用默认的 ./rules
     let rules_path = rules_dir.or_else(|| {
@@ -798,9 +798,9 @@ async fn diagnose_process(
     let diagnosis = match run_diagnosis(pid, socket_path, provider, rules_path).await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("[xctl] 诊断失败: {}", e);
+            eprintln!("[ark] 诊断失败: {}", e);
             eprintln!("\n提示:");
-            eprintln!("  1. 确保 daemon 正在运行: xctl run");
+            eprintln!("  1. 确保 daemon 正在运行: ark run");
             eprintln!("  2. 设置 API Key:");
             eprintln!("     export OPENAI_API_KEY=your_key");
             eprintln!("     或");
@@ -875,14 +875,14 @@ async fn fix_process(
     use colored::Colorize;
     
     println!(
-        "[xctl] 正在修复进程 {}...",
+        "[ark] 正在修复进程 {}...",
         pid.to_string().bright_green()
     );
     
     // 连接到 daemon
     let client = IpcClient::new(socket_path);
     if !client.ping().await? {
-        return Err("无法连接到 daemon，请先运行: xctl run".into());
+        return Err("无法连接到 daemon，请先运行: ark run".into());
     }
     
     // 获取根因分析（用于场景识别）
@@ -892,19 +892,19 @@ async fn fix_process(
     let scene = identify_scene_from_causes(&causes);
     
     if scene.is_none() {
-        println!("{}", "[xctl] 未识别到问题场景，无法自动修复".bright_yellow());
-        println!("提示: 可以尝试手动执行: xctl zap {}", pid);
+        println!("{}", "[ark] 未识别到问题场景，无法自动修复".bright_yellow());
+        println!("提示: 可以尝试手动执行: ark zap {}", pid);
         return Ok(());
     }
     
     let scene = scene.unwrap();
-    println!("[xctl] 识别到场景: {:?}", scene);
+    println!("[ark] 识别到场景: {:?}", scene);
     
     // 创建分析结果（基于根因）
     let analysis = create_analysis_from_causes(scene, &causes);
     
     if analysis.is_none() {
-        println!("{}", "[xctl] 无法分析场景，无法自动修复".bright_yellow());
+        println!("{}", "[ark] 无法分析场景，无法自动修复".bright_yellow());
         return Ok(());
     }
     
@@ -1020,14 +1020,14 @@ async fn fix_process(
     use colored::Colorize;
     
     println!(
-        "[xctl] 正在修复进程 {}...",
+        "[ark] 正在修复进程 {}...",
         pid.to_string().bright_green()
     );
     
     // 连接到 daemon
     let client = IpcClient::new(port);
     if !client.ping().await? {
-        return Err("无法连接到 daemon，请先运行: xctl run".into());
+        return Err("无法连接到 daemon，请先运行: ark run".into());
     }
     
     // 获取根因分析
@@ -1037,7 +1037,7 @@ async fn fix_process(
     let scene = identify_scene_from_causes(&causes);
     
     if scene.is_none() {
-        println!("{}", "[xctl] 未识别到问题场景，无法自动修复".bright_yellow());
+        println!("{}", "[ark] 未识别到问题场景，无法自动修复".bright_yellow());
         return Ok(());
     }
     
@@ -1121,18 +1121,18 @@ fn create_analysis_from_causes(scene: SceneType, causes: &[String]) -> scene::An
     match scene {
         SceneType::GpuOom => {
             recommended_actions.push("尝试触发框架层的 Checkpoint Dump 信号 (SIGUSR1)".to_string());
-            recommended_actions.push("隔离该节点，执行 xctl zap 清理僵尸进程".to_string());
+            recommended_actions.push("隔离该节点，执行 ark zap 清理僵尸进程".to_string());
         }
         SceneType::NetworkStall => {
             recommended_actions.push("检查交换机 PFC 配置".to_string());
             recommended_actions.push("检查 RoCE/HCCS 连接状态".to_string());
         }
         SceneType::WorkloadStalled => {
-            recommended_actions.push("如果确认卡死，执行 xctl zap 终止进程".to_string());
+            recommended_actions.push("如果确认卡死，执行 ark zap 终止进程".to_string());
             recommended_actions.push("检查是否有 Checkpoint 可以恢复".to_string());
         }
         _ => {
-            recommended_actions.push("执行 xctl zap 终止进程".to_string());
+            recommended_actions.push("执行 ark zap 终止进程".to_string());
         }
     }
     

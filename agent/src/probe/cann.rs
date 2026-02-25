@@ -2,7 +2,7 @@
 //! 
 //! 使用 FFI 直接绑定华为 CANN (Compute Architecture for Neural Networks) 库
 
-use xctl_core::event::{Event, EventType};
+use ark_core::event::{Event, EventType};
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 use std::time::{SystemTime, UNIX_EPOCH};

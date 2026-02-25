@@ -1,5 +1,5 @@
 [workspace]
-members = ["xctl-probe-ebpf", "xctl-probe-ebpf-ebpf"]
+members = ["ark-probe-ebpf", "ark-probe-ebpf-ebpf"]
 resolver = "2"
 
 [workspace.dependencies]

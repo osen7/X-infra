@@ -1,4 +1,4 @@
-# xctl 快速开始指南
+# Ark 快速开始指南
 
 ## 🚀 5 分钟上手真实 GPU 监控
 
@@ -31,16 +31,16 @@ cargo build --release
 
 ```bash
 # 在终端 1
-cargo run -p xctl --release -- run --probe examples/xctl-probe-nvml.py
+cargo run -p ark --release -- run --probe examples/ark-probe-nvml.py
 ```
 
 你应该看到：
 ```
-[xctl] 启动事件总线...
+[ark] 启动事件总线...
 已检测到 X 个 GPU，开始监控...
-[xctl] 探针已启动，状态图已初始化
-[xctl] IPC 服务器已启动，监听端口 9090
-[xctl] 按 Ctrl+C 退出
+[ark] 探针已启动，状态图已初始化
+[ark] IPC 服务器已启动，监听端口 9090
+[ark] 按 Ctrl+C 退出
 ```
 
 ### 步骤 3: 查询进程列表
@@ -49,7 +49,7 @@ cargo run -p xctl --release -- run --probe examples/xctl-probe-nvml.py
 
 ```bash
 # 在终端 2
-cargo run -p xctl --release -- ps
+cargo run -p ark --release -- ps
 ```
 
 你应该看到类似输出：
@@ -62,13 +62,13 @@ cargo run -p xctl --release -- ps
 ### 步骤 4: 分析进程阻塞根因
 
 ```bash
-cargo run -p xctl --release -- why 1234
+cargo run -p ark --release -- why 1234
 ```
 
 ### 步骤 5: 强制终止进程（如果需要）
 
 ```bash
-cargo run -p xctl --release -- zap 1234
+cargo run -p ark --release -- zap 1234
 ```
 
 ## 🧪 测试模式（无 GPU 环境）
@@ -76,7 +76,7 @@ cargo run -p xctl --release -- zap 1234
 如果没有 NVIDIA GPU，可以使用模拟探针：
 
 ```bash
-cargo run -p xctl --release -- run --probe examples/xctl-probe-dummy.py
+cargo run -p ark --release -- run --probe examples/ark-probe-dummy.py
 ```
 
 ## 📊 验证探针工作
@@ -90,7 +90,7 @@ daemon 启动后，你应该看到事件不断输出（如果启用了详细日�
 在另一个终端运行 GPU 任务（如 `nvidia-smi` 或训练脚本），然后运行：
 
 ```bash
-cargo run -p xctl --release -- ps
+cargo run -p ark --release -- ps
 ```
 
 你应该看到进程出现在列表中，并且 `RESOURCES` 列显示它使用的 GPU。

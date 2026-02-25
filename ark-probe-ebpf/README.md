@@ -1,6 +1,6 @@
-# xctl eBPF 网络探针
+# Ark eBPF 网络探针
 
-这是 xctl 的 eBPF 网络探针，使用 Rust Aya 框架实现，直接从 Linux 内核态捕获 TCP 重传和丢包事件。
+这是 Ark 的 eBPF 网络探针，使用 Rust Aya 框架实现，直接从 Linux 内核态捕获 TCP 重传和丢包事件。
 
 ## 🎯 功能特性
 
@@ -48,9 +48,9 @@ chmod +x build.sh
 ./build.sh
 
 # 方式 2：手动构建
-cd xctl-probe-ebpf-ebpf
+cd ark-probe-ebpf-ebpf
 cargo +nightly build --release --target bpfel-unknown-none
-cd ../xctl-probe-ebpf
+cd ../ark-probe-ebpf
 cargo build --release
 ```
 
@@ -60,17 +60,17 @@ cargo build --release
 
 ```bash
 # 输出 JSONL 格式（默认）
-sudo ./target/release/xctl-probe-ebpf
+sudo ./target/release/ark-probe-ebpf
 
 # 输出调试格式
-sudo ./target/release/xctl-probe-ebpf --format debug
+sudo ./target/release/ark-probe-ebpf --format debug
 ```
 
-### 集成到 xctl
+### 集成到 Ark
 
 ```bash
-# xctl 会自动通过 SubprocessProbe 启动此探针
-xctl run --probe ./target/release/xctl-probe-ebpf
+# Ark 会自动通过 SubprocessProbe 启动此探针
+ark run --probe ./target/release/ark-probe-ebpf
 ```
 
 ## 📊 输出格式
@@ -116,7 +116,7 @@ xctl run --probe ./target/release/xctl-probe-ebpf
 eBPF 程序需要 root 权限才能加载到内核：
 
 ```bash
-sudo ./target/release/xctl-probe-ebpf
+sudo ./target/release/ark-probe-ebpf
 ```
 
 ### 内核版本要求
@@ -142,7 +142,7 @@ uname -r
 
 - [Aya 框架文档](https://aya-rs.dev/)
 - [eBPF 官方文档](https://ebpf.io/)
-- [xctl 主项目](../README.md)
+- [Ark 主项目](../README.md)
 
 ## 🔒 安全考虑
 

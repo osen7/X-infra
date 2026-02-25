@@ -16,7 +16,7 @@ COPY agent/Cargo.toml agent/Cargo.toml
 COPY core core
 COPY agent agent
 
-RUN cargo build --release -p xctl
+RUN cargo build --release -p ark
 
 FROM debian:bookworm-slim
 
@@ -28,34 +28,34 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户（但允许在特权模式下运行）
-RUN useradd -m -u 1000 xctl
+RUN useradd -m -u 1000 ark
 
 # 复制二进制文件
-COPY --from=builder /build/target/release/xctl /opt/xctl/xctl
+COPY --from=builder /build/target/release/ark /opt/ark/ark
 
 # 复制探针脚本（可选，也可以通过 ConfigMap 挂载）
-COPY examples/xctl-probe-nvml.py /opt/xctl/probes/
-COPY examples/xctl-probe-network.py /opt/xctl/probes/
-COPY examples/xctl-probe-dummy.py /opt/xctl/probes/
+COPY examples/ark-probe-nvml.py /opt/ark/probes/
+COPY examples/ark-probe-network.py /opt/ark/probes/
+COPY examples/ark-probe-dummy.py /opt/ark/probes/
 
 # 复制规则文件（可选，也可以通过 ConfigMap 挂载）
-COPY rules /opt/xctl/rules
+COPY rules /opt/ark/rules
 
 # 设置权限
-RUN chmod +x /opt/xctl/xctl && \
-    chmod +x /opt/xctl/probes/*.py && \
-    chown -R xctl:xctl /opt/xctl
+RUN chmod +x /opt/ark/ark && \
+    chmod +x /opt/ark/probes/*.py && \
+    chown -R ark:ark /opt/ark
 
 # 创建 IPC socket 目录
-RUN mkdir -p /var/run/xctl && \
-    chown -R xctl:xctl /var/run/xctl
+RUN mkdir -p /var/run/ark && \
+    chown -R ark:ark /var/run/ark
 
 # 注意：在 Kubernetes 中，Agent 需要以特权模式运行
 # 因此这里不切换到非 root 用户，而是让 Kubernetes 的 securityContext 控制
-WORKDIR /opt/xctl
+WORKDIR /opt/ark
 
-ENV PATH="/opt/xctl:${PATH}"
+ENV PATH="/opt/ark:${PATH}"
 
 # 默认命令（可以通过 Kubernetes args 覆盖）
-ENTRYPOINT ["/opt/xctl/xctl"]
+ENTRYPOINT ["/opt/ark/ark"]
 CMD ["run"]

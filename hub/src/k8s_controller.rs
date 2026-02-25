@@ -4,7 +4,7 @@
 //! 1. 给 Node 打上 NoSchedule 污点
 //! 2. 执行 Pod Eviction（驱逐）
 //! 
-//! 让 xctl 从被动监控工具升维成 AI 集群自动驾驶控制面
+//! 让 Ark 从被动监控工具升维成 AI 集群自动驾驶控制面
 
 use k8s_openapi::api::core::v1::{Node, Pod};
 use kube::{Api, Client, Config};
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
-use xctl_core::event::{Event, EventType};
+use ark_core::event::{Event, EventType};
 
 /// 不可逆故障类型
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +181,7 @@ impl K8sController {
         let node = self.node_api.get(&k8s_node_name).await?;
         
         // 构建污点
-        let taint_key = "xctl.io/hardware-failure";
+        let taint_key = "ark.io/hardware-failure";
         let taint_value = match fault {
             IrreversibleFault::PersistentXidError { xid_code, .. } => {
                 format!("xid-error:{}", xid_code)
@@ -219,7 +219,7 @@ impl K8sController {
                 }
             });
             
-            let params = PatchParams::apply("xctl-controller");
+            let params = PatchParams::apply("ark-controller");
             self.node_api
                 .patch(&k8s_node_name, &params, &Patch::Apply(patch))
                 .await?;
@@ -307,7 +307,7 @@ impl K8sController {
         Ok(evicted_count)
     }
     
-    /// 将 xctl node_id 映射到 K8s Node 名称
+    /// 将 Ark node_id 映射到 K8s Node 名称
     /// 
     /// 策略：
     /// 1. 如果 node_id 就是 K8s Node 名称，直接返回
@@ -320,12 +320,12 @@ impl K8sController {
         }
         
         // 如果失败，尝试通过标签查找
-        // 假设 Agent 在启动时会给 Node 打上标签 xctl.io/node-id=<node_id>
+        // 假设 Agent 在启动时会给 Node 打上标签 ark.io/node-id=<node_id>
         let nodes = self.node_api.list(&Default::default()).await?;
         
         for node in nodes {
             if let Some(labels) = &node.metadata.labels {
-                if let Some(label_value) = labels.get("xctl.io/node-id") {
+                if let Some(label_value) = labels.get("ark.io/node-id") {
                     if label_value == node_id {
                         if let Some(name) = &node.metadata.name {
                             return Ok(name.clone());

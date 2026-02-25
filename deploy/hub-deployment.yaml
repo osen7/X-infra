@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: xctl-hub
-  namespace: xctl-system
+  name: ark-hub
+  namespace: ark-system
   labels:
-    app: xctl-hub
+    app: ark-hub
     component: control-plane
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: xctl-hub
+      app: ark-hub
   template:
     metadata:
       labels:
-        app: xctl-hub
+        app: ark-hub
         component: control-plane
     spec:
-      serviceAccountName: xctl-hub-sa
+      serviceAccountName: ark-hub-sa
       containers:
-      - name: xctl-hub
-        image: xctl-hub:latest  # 替换为实际的镜像地址，如 registry.example.com/xctl-hub:v1.0.0
+      - name: ark-hub
+        image: ark-hub:latest  # 替换为实际的镜像地址，如 registry.example.com/ark-hub:v1.0.0
         imagePullPolicy: IfNotPresent
         args:
           - "--ws-listen"
@@ -61,10 +61,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: xctl-hub
-  namespace: xctl-system
+  name: ark-hub
+  namespace: ark-system
   labels:
-    app: xctl-hub
+    app: ark-hub
     component: control-plane
 spec:
   type: ClusterIP
@@ -78,4 +78,4 @@ spec:
     targetPort: 8081
     protocol: TCP
   selector:
-    app: xctl-hub
+    app: ark-hub

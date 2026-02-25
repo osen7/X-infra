@@ -1,6 +1,6 @@
-# xctl Kubernetes 部署指南
+# Ark Kubernetes 部署指南
 
-本目录包含将 `xctl` 部署到 Kubernetes 集群的完整配置。
+本目录包含将 `Ark` 部署到 Kubernetes 集群的完整配置。
 
 ## 🚀 快速部署
 
@@ -8,7 +8,7 @@
 
 1. Kubernetes 集群（版本 >= 1.20）
 2. `kubectl` 已配置并可以访问集群
-3. `xctl-hub` 和 `xctl` 的 Docker 镜像已构建并推送到镜像仓库
+3. `ark-hub` 和 `ark` 的 Docker 镜像已构建并推送到镜像仓库
 
 ### 一键部署
 
@@ -26,18 +26,18 @@ kubectl apply -f deploy/agent-daemonset.yaml
 
 ```bash
 # 检查 Hub 状态
-kubectl get deployment -n xctl-system xctl-hub
-kubectl get svc -n xctl-system xctl-hub
+kubectl get deployment -n ark-system ark-hub
+kubectl get svc -n ark-system ark-hub
 
 # 检查 Agent 状态（应该在每个节点上运行）
-kubectl get daemonset -n xctl-system xctl-agent
-kubectl get pods -n xctl-system -l app=xctl-agent
+kubectl get daemonset -n ark-system ark-agent
+kubectl get pods -n ark-system -l app=ark-agent
 
 # 查看 Hub 日志
-kubectl logs -n xctl-system -l app=xctl-hub --tail=50
+kubectl logs -n ark-system -l app=ark-hub --tail=50
 
 # 查看 Agent 日志（选择任意一个节点）
-kubectl logs -n xctl-system -l app=xctl-agent --tail=50
+kubectl logs -n ark-system -l app=ark-agent --tail=50
 ```
 
 ## 📋 组件说明
@@ -46,8 +46,8 @@ kubectl logs -n xctl-system -l app=xctl-agent --tail=50
 
 **重要**: Hub 需要 Kubernetes API 权限才能执行节点隔离和 Pod 驱逐操作。
 
-- **ServiceAccount**: `xctl-hub-sa`（在 `xctl-system` 命名空间）
-- **ClusterRole**: `xctl-hub-controller`
+- **ServiceAccount**: `ark-hub-sa`（在 `ark-system` 命名空间）
+- **ClusterRole**: `ark-hub-controller`
   - `nodes`: get, list, patch（打污点）
   - `pods`: get, list, delete（查询和驱逐）
   - `pods/eviction`: create（优雅驱逐，尊重 PDB）
@@ -56,7 +56,7 @@ kubectl logs -n xctl-system -l app=xctl-agent --tail=50
 ### Hub Deployment
 
 - **服务类型**: ClusterIP（集群内部访问）
-- **ServiceAccount**: `xctl-hub-sa`（用于 K8s API 调用）
+- **ServiceAccount**: `ark-hub-sa`（用于 K8s API 调用）
 - **端口**:
   - `8080`: WebSocket（Agent 连接）
   - `8081`: HTTP API（CLI 查询）
@@ -72,7 +72,7 @@ kubectl logs -n xctl-system -l app=xctl-agent --tail=50
   - `hostPID: true` - 访问宿主机进程命名空间
   - `privileged: true` - 挂载 eBPF 程序
   - `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_BPF` - 内核级操作权限
-- **IPC Socket**: `/var/run/xctl/xctl.sock`（宿主机路径）
+- **IPC Socket**: `/var/run/ark/ark.sock`（宿主机路径）
 - **资源限制**: 128Mi-256Mi 内存，50m-200m CPU
 
 ## 🔧 配置自定义
@@ -101,11 +101,11 @@ args:
 
 ```yaml
 images:
-  - name: xctl-hub
-    newName: registry.example.com/xctl-hub
+  - name: ark-hub
+    newName: registry.example.com/ark-hub
     newTag: v1.0.0
-  - name: xctl
-    newName: registry.example.com/xctl
+  - name: ark
+    newName: registry.example.com/ark
     newTag: v1.0.0
 ```
 
@@ -115,20 +115,20 @@ images:
 
 ```bash
 # 在项目根目录
-docker build -t xctl-hub:latest -f deploy/Dockerfile.hub .
+docker build -t ark-hub:latest -f deploy/Dockerfile.hub .
 # 或使用多阶段构建
-docker build -t xctl-hub:v1.0.0 \
-  --build-arg BINARY=xctl-hub \
+docker build -t ark-hub:v1.0.0 \
+  --build-arg BINARY=ark-hub \
   -f deploy/Dockerfile .
 ```
 
 ### Agent 镜像
 
 ```bash
-docker build -t xctl:latest -f deploy/Dockerfile.agent .
+docker build -t ark:latest -f deploy/Dockerfile.agent .
 # 或
-docker build -t xctl:v1.0.0 \
-  --build-arg BINARY=xctl \
+docker build -t ark:v1.0.0 \
+  --build-arg BINARY=ark \
   -f deploy/Dockerfile .
 ```
 
@@ -138,22 +138,22 @@ docker build -t xctl:v1.0.0 \
 
 ```bash
 # 转发 HTTP API 端口
-kubectl port-forward -n xctl-system svc/xctl-hub 8081:8081
+kubectl port-forward -n ark-system svc/ark-hub 8081:8081
 
 # 在另一个终端使用 CLI
-xctl cluster ps --hub http://localhost:8081
-xctl cluster why job-1234 --hub http://localhost:8081
+ark cluster ps --hub http://localhost:8081
+ark cluster why job-1234 --hub http://localhost:8081
 ```
 
-### 在 Pod 中使用 xctl CLI
+### 在 Pod 中使用 ark CLI
 
 ```bash
 # 进入 Agent Pod
-kubectl exec -it -n xctl-system $(kubectl get pod -n xctl-system -l app=xctl-agent -o jsonpath='{.items[0].metadata.name}') -- /bin/sh
+kubectl exec -it -n ark-system $(kubectl get pod -n ark-system -l app=ark-agent -o jsonpath='{.items[0].metadata.name}') -- /bin/sh
 
 # 使用本地 IPC
-/opt/xctl/xctl ps
-/opt/xctl/xctl why <PID>
+/opt/ark/ark ps
+/opt/ark/ark why <PID>
 ```
 
 ## ⚠️ 安全注意事项
@@ -176,23 +176,23 @@ kubectl exec -it -n xctl-system $(kubectl get pod -n xctl-system -l app=xctl-age
 
 ```bash
 # 查看事件
-kubectl describe pod -n xctl-system -l app=xctl-hub
+kubectl describe pod -n ark-system -l app=ark-hub
 
 # 查看日志
-kubectl logs -n xctl-system -l app=xctl-hub
+kubectl logs -n ark-system -l app=ark-hub
 ```
 
 ### Agent 无法连接 Hub
 
 ```bash
 # 检查 Hub Service
-kubectl get svc -n xctl-system xctl-hub
+kubectl get svc -n ark-system ark-hub
 
 # 检查 DNS 解析
-kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup xctl-hub.xctl-system.svc.cluster.local
+kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup ark-hub.ark-system.svc.cluster.local
 
 # 检查网络连通性
-kubectl exec -n xctl-system -l app=xctl-agent -- wget -O- http://xctl-hub.xctl-system.svc.cluster.local:8081/api/v1/ps
+kubectl exec -n ark-system -l app=ark-agent -- wget -O- http://ark-hub.ark-system.svc.cluster.local:8081/api/v1/ps
 ```
 
 ### Agent 无法访问宿主机进程

@@ -1,5 +1,5 @@
 [package]
-name = "xctl-core"
+name = "ark-core"
 version.workspace = true
 edition.workspace = true
 

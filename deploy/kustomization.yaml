@@ -1,10 +1,10 @@
-# Kustomization 配置：一键部署 xctl 到 Kubernetes 集群
+# Kustomization 配置：一键部署 Ark 到 Kubernetes 集群
 # 使用方法：kubectl apply -k deploy/
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: xctl-system
+namespace: ark-system
 
 resources:
   - namespace.yaml
@@ -14,21 +14,21 @@ resources:
 
 # 可选：通过 ConfigMap 提供规则和探针脚本
 # configMapGenerator:
-#   - name: xctl-rules
+#   - name: ark-rules
 #     files:
 #       - rules/gpu-oom.yaml
 #       - rules/network-stall.yaml
 #       - rules/workload-stalled.yaml
-#   - name: xctl-probes
+#   - name: ark-probes
 #     files:
-#       - examples/xctl-probe-nvml.py
-#       - examples/xctl-probe-network.py
+#       - examples/ark-probe-nvml.py
+#       - examples/ark-probe-network.py
 
 # 可选：镜像替换（用于不同环境）
 # images:
-#   - name: xctl-hub
-#     newName: registry.example.com/xctl-hub
+#   - name: ark-hub
+#     newName: registry.example.com/ark-hub
 #     newTag: v1.0.0
-#   - name: xctl
-#     newName: registry.example.com/xctl
+#   - name: ark
+#     newName: registry.example.com/ark
 #     newTag: v1.0.0

@@ -1,10 +1,10 @@
 [package]
-name = "xctl-probe-ebpf"
+name = "ark-probe-ebpf"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "xctl-probe-ebpf"
+name = "ark-probe-ebpf"
 path = "src/main.rs"
 
 [dependencies]
@@ -18,4 +18,4 @@ bytes = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 anyhow = { workspace = true }
-xctl-probe-ebpf-ebpf = { path = "../xctl-probe-ebpf-ebpf" }
+ark-probe-ebpf-ebpf = { path = "../ark-probe-ebpf-ebpf" }

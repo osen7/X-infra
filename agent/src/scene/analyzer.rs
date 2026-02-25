@@ -1,4 +1,4 @@
-use xctl_core::graph::StateGraph;
+use ark_core::graph::StateGraph;
 use crate::scene::types::{AnalysisResult, SceneType};
 
 /// 场景分析器 trait

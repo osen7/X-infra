@@ -1,4 +1,4 @@
-# xctl Workspace 架构
+# Ark Workspace 架构
 
 ## 📦 项目结构
 
@@ -6,7 +6,7 @@
 x-infra/
 ├── Cargo.toml              # Workspace 根配置
 │
-├── core/                   # 共享底座（xctl-core）
+├── core/                   # 共享底座（ark-core）
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs          # 重新导出常用类型
@@ -14,7 +14,7 @@ x-infra/
 │       ├── graph.rs        # 状态图引擎（StateGraph, Edge, Node）
 │       └── rules/          # 规则引擎（RuleEngine, Rule, Matcher）
 │
-├── agent/                  # 单机节点程序（xctl）
+├── agent/                  # 单机节点程序（ark）
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs         # CLI 入口（run, ps, why, zap, diag, fix）
@@ -24,7 +24,7 @@ x-infra/
 │       ├── diag.rs         # AI 诊断
 │       └── scene/          # 场景分析器
 │
-└── hub/                    # 全局中控（xctl-hub）
+└── hub/                    # 全局中控（ark-hub）
     ├── Cargo.toml
     └── src/
         └── main.rs         # Hub 服务器（WebSocket，全局图）
@@ -124,5 +124,5 @@ agent ─┘
    - 实现 WebSocket 客户端
 
 3. **集群级命令**
-   - `xctl cluster why <job-id>`
-   - `xctl cluster fix <job-id>`
+   - `ark cluster why <job-id>`
+   - `ark cluster fix <job-id>`

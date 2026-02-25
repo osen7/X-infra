@@ -4,7 +4,7 @@
 //! - 只推送错误事件、进程状态变化、触发规则的事件
 //! - 过滤高频波动（如 gpu.util 的微小变化）
 
-use xctl_core::event::{Event, EventType};
+use ark_core::event::{Event, EventType};
 use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;

@@ -53,7 +53,7 @@ solution_steps:
   
   - step: 3
     action: "检查是否有 WaitsOn 网络或存储"
-    command: "xctl why <pid>"
+    command: "ark why <pid>"
     manual: false
   
   - step: 4

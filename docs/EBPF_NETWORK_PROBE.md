@@ -2,17 +2,17 @@
 
 ## 🎯 终极战役：eBPF 真实网络探针
 
-这是 xctl 项目技术含量最高、护城河最深的模块。通过 eBPF 直接从 Linux 内核态捕获 TCP 重传和丢包事件，实现**零侵入**的网络监控。
+这是 Ark 项目技术含量最高、护城河最深的模块。通过 eBPF 直接从 Linux 内核态捕获 TCP 重传和丢包事件，实现**零侵入**的网络监控。
 
 ## 📋 项目结构
 
 ```
-xctl-probe-ebpf/
+ark-probe-ebpf/
 ├── Cargo.toml              # Workspace 配置
-├── xctl-probe-ebpf/        # 用户态程序
+├── ark-probe-ebpf/         # 用户态程序
 │   ├── Cargo.toml
 │   └── src/main.rs         # 加载 eBPF、读取 RingBuffer、输出 JSONL
-├── xctl-probe-ebpf-ebpf/   # 内核态 eBPF 程序
+├── ark-probe-ebpf-ebpf/    # 内核态 eBPF 程序
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs         # kprobe 逻辑（Hook tcp_retransmit_skb）
@@ -77,7 +77,7 @@ sudo apt-get install -y \
 
 ```bash
 # 方式 1：使用构建脚本
-cd xctl-probe-ebpf
+cd ark-probe-ebpf
 chmod +x build.sh
 ./build.sh
 
@@ -85,9 +85,9 @@ chmod +x build.sh
 cargo run --manifest-path xtask/Cargo.toml
 
 # 方式 3：手动构建
-cd xctl-probe-ebpf-ebpf
+cd ark-probe-ebpf-ebpf
 cargo +nightly build --release --target bpfel-unknown-none
-cd ../xctl-probe-ebpf
+cd ../ark-probe-ebpf
 cargo build --release
 ```
 
@@ -95,10 +95,10 @@ cargo build --release
 
 ```bash
 # 作为独立程序运行（需要 root 权限）
-sudo ./target/release/xctl-probe-ebpf
+sudo ./target/release/ark-probe-ebpf
 
-# 集成到 xctl
-xctl run --probe ./target/release/xctl-probe-ebpf
+# 集成到 ark
+ark run --probe ./target/release/ark-probe-ebpf
 ```
 
 ## 🔄 数据流向
@@ -116,7 +116,7 @@ PerfEventArray (RingBuffer)
     ↓
 JSONL 格式输出
     ↓
-xctl 事件总线
+ark 事件总线
     ↓
 状态图建立 WaitsOn 边
     ↓
@@ -163,15 +163,15 @@ Linux 内核的 eBPF 验证器会检查所有 eBPF 程序：
 
 ```bash
 # 使用 systemd 管理，自动获取权限
-sudo systemctl enable xctl-probe-ebpf
-sudo systemctl start xctl-probe-ebpf
+sudo systemctl enable ark-probe-ebpf
+sudo systemctl start ark-probe-ebpf
 ```
 
 ## 🐛 故障排除
 
 ### 编译错误
 
-**问题**：`error: failed to run custom build command for 'xctl-probe-ebpf-ebpf'`
+**问题**：`error: failed to run custom build command for 'ark-probe-ebpf-ebpf'`
 
 **解决**：
 ```bash
@@ -187,10 +187,10 @@ cargo install bpf-linker
 **解决**：
 ```bash
 # 使用 root 权限运行
-sudo ./target/release/xctl-probe-ebpf
+sudo ./target/release/ark-probe-ebpf
 
 # 或设置 capability
-sudo setcap cap_bpf,cap_sys_admin+ep ./target/release/xctl-probe-ebpf
+sudo setcap cap_bpf,cap_sys_admin+ep ./target/release/ark-probe-ebpf
 ```
 
 ### 内核版本问题
@@ -246,15 +246,15 @@ pub fn mlx5e_handle_rx_cqe(ctx: ProbeContext) -> u32 {
 - [Aya 框架文档](https://aya-rs.dev/book/)
 - [eBPF 官方文档](https://ebpf.io/what-is-ebpf/)
 - [Linux 内核网络栈](https://www.kernel.org/doc/html/latest/networking/)
-- [xctl 主项目](../README.md)
+- [ark 主项目](../README.md)
 
 ## 🎉 总结
 
-eBPF 网络探针是 xctl 的**核心技术护城河**，实现了：
+eBPF 网络探针是 ark 的**核心技术护城河**，实现了：
 
 ✅ **零侵入**：不需要修改任何业务代码  
 ✅ **内核级**：直接从内核态捕获事件  
 ✅ **高性能**：极低开销，实时监控  
 ✅ **精准定位**：精确到进程级别  
 
-这使得 xctl 在 AI 训练网络故障诊断领域**毫无敌手**。
+这使得 ark 在 AI 训练网络故障诊断领域**毫无敌手**。

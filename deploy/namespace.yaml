@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: xctl-system
+  name: ark-system
   labels:
-    name: xctl-system
-    app.kubernetes.io/name: xctl
+    name: ark-system
+    app.kubernetes.io/name: ark
     app.kubernetes.io/component: system

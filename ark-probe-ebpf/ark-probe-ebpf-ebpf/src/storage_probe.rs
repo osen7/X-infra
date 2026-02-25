@@ -8,7 +8,7 @@ use aya_bpf::{
     programs::ProbeContext,
 };
 
-use xctl_probe_ebpf_ebpf::StorageEvent;
+use ark_probe_ebpf_ebpf::StorageEvent;
 
 #[map]
 static mut STORAGE_EVENTS: PerfEventArray<StorageEvent> = PerfEventArray::with_max_entries(1024, 0);

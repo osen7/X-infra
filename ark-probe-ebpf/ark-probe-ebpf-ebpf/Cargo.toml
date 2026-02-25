@@ -1,5 +1,5 @@
 [package]
-name = "xctl-probe-ebpf-ebpf"
+name = "ark-probe-ebpf-ebpf"
 version = "0.1.0"
 edition = "2021"
 

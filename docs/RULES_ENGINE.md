@@ -1,4 +1,4 @@
-# xctl 规则引擎设计（声明式知识库）
+# Ark 规则引擎设计（声明式知识库）
 
 ## 设计原则
 
@@ -51,7 +51,7 @@ solution_steps:
   
   - step: 2
     action: "终止占用显存最大的进程"
-    command: "xctl zap <pid>"
+    command: "ark zap <pid>"
   
   - step: 3
     action: "降低批处理大小或模型精度"

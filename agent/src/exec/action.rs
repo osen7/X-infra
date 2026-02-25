@@ -43,7 +43,7 @@ impl ActionType {
         }
         
         // Kill/Zap 相关
-        if text_lower.contains("xctl zap") || text_lower.contains("kill") || 
+        if text_lower.contains("ark zap") || text_lower.contains("kill") || 
            text_lower.contains("终止进程") || text_lower.contains("清理") {
             return Some(ActionType::KillProcess);
         }

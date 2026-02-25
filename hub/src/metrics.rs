@@ -1,13 +1,13 @@
 //! Prometheus Metrics 收集模块（Hub 端）
 //! 
-//! 暴露 xctl Hub 的指标供 Prometheus 抓取
+//! 暴露 Ark Hub 的指标供 Prometheus 抓取
 
 use prometheus::{
     register_counter_vec, register_gauge_vec, register_histogram_vec,
     CounterVec, GaugeVec, HistogramVec, Encoder, TextEncoder,
 };
 use std::sync::Arc;
-use xctl_core::graph::StateGraph;
+use ark_core::graph::StateGraph;
 
 /// Hub Metrics 收集器
 pub struct HubMetricsCollector {
@@ -29,40 +29,40 @@ impl HubMetricsCollector {
         Ok(Self {
             // 基础指标
             global_graph_nodes_total: register_gauge_vec!(
-                "xctl_hub_graph_nodes_total",
+                "ark_hub_graph_nodes_total",
                 "全局图中节点总数",
                 &["node_type"]
             )?,
             global_graph_edges_total: register_gauge_vec!(
-                "xctl_hub_graph_edges_total",
+                "ark_hub_graph_edges_total",
                 "全局图中边总数",
                 &["edge_type"]
             )?,
             events_received_total: register_counter_vec!(
-                "xctl_hub_events_received_total",
+                "ark_hub_events_received_total",
                 "Hub 接收的事件总数",
                 &["event_type", "node_id"]
             )?,
             websocket_connections: register_gauge_vec!(
-                "xctl_hub_websocket_connections",
+                "ark_hub_websocket_connections",
                 "当前 WebSocket 连接数",
                 &["status"]
             )?,
             
             // 详细指标
             cluster_query_duration_seconds: register_histogram_vec!(
-                "xctl_hub_cluster_query_duration_seconds",
+                "ark_hub_cluster_query_duration_seconds",
                 "集群查询耗时",
                 &["query_type"],
                 vec![0.001, 0.01, 0.1, 1.0, 5.0, 10.0]
             )?,
             cluster_fix_actions_total: register_counter_vec!(
-                "xctl_hub_cluster_fix_actions_total",
+                "ark_hub_cluster_fix_actions_total",
                 "集群修复动作总数",
                 &["action_type", "node_id", "result"]
             )?,
             agent_events_received_total: register_counter_vec!(
-                "xctl_hub_agent_events_received_total",
+                "ark_hub_agent_events_received_total",
                 "从各 Agent 接收的事件数",
                 &["node_id", "event_type"]
             )?,
@@ -78,9 +78,9 @@ impl HubMetricsCollector {
         let mut node_counts = std::collections::HashMap::new();
         for node in nodes.values() {
             let node_type = match node.node_type {
-                xctl_core::graph::NodeType::Process => "process",
-                xctl_core::graph::NodeType::Resource => "resource",
-                xctl_core::graph::NodeType::Error => "error",
+                ark_core::graph::NodeType::Process => "process",
+                ark_core::graph::NodeType::Resource => "resource",
+                ark_core::graph::NodeType::Error => "error",
             };
             *node_counts.entry(node_type).or_insert(0) += 1;
         }
@@ -96,9 +96,9 @@ impl HubMetricsCollector {
         let mut edge_counts = std::collections::HashMap::new();
         for edge in &edges {
             let edge_type = match edge.edge_type {
-                xctl_core::graph::EdgeType::Consumes => "consumes",
-                xctl_core::graph::EdgeType::WaitsOn => "waits_on",
-                xctl_core::graph::EdgeType::BlockedBy => "blocked_by",
+                ark_core::graph::EdgeType::Consumes => "consumes",
+                ark_core::graph::EdgeType::WaitsOn => "waits_on",
+                ark_core::graph::EdgeType::BlockedBy => "blocked_by",
             };
             *edge_counts.entry(edge_type).or_insert(0) += 1;
         }

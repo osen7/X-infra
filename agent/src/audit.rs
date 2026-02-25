@@ -1,6 +1,6 @@
 //! 审计日志模块
 //! 
-//! 记录所有 xctl fix 执行的系统级动作，满足企业合规要求
+//! 记录所有 ark fix 执行的系统级动作，满足企业合规要求
 
 use serde::{Serialize, Deserialize};
 use std::fs::{File, OpenOptions};

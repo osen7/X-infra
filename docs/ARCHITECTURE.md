@@ -1,6 +1,6 @@
-# xctl 架构设计文档
+# Ark 架构设计文档
 
-本文档详细描述 xctl 的系统架构、数据流转和核心组件。
+本文档详细描述 Ark 的系统架构、数据流转和核心组件。
 
 ## 📐 系统架构总览
 
@@ -25,7 +25,7 @@ graph TB
     end
     
     subgraph "外部系统"
-        CLI[CLI 客户端<br/>xctl ps/why/fix]
+        CLI[CLI 客户端<br/>ark ps/why/fix]
         K8s[Kubernetes<br/>DaemonSet/Deployment]
         LLM[大模型 API<br/>OpenAI/Claude]
     end
@@ -79,12 +79,12 @@ sequenceDiagram
     Rule->>Rule: 匹配 YAML 规则
     Rule-->>Graph: 返回场景分析结果
     
-    CLI->>IPC: xctl why <PID>
+    CLI->>IPC: ark why <PID>
     IPC->>Graph: find_root_cause()
     Graph-->>IPC: 返回根因链
     IPC-->>CLI: 显示结果
     
-    CLI->>IPC: xctl fix <PID>
+    CLI->>IPC: ark fix <PID>
     IPC->>Executor: 执行修复动作
     Executor-->>CLI: 执行结果
 ```
@@ -279,18 +279,18 @@ actions:
 - 提供详细指标（进程资源使用、等待时间、错误计数）
 
 **指标类型**:
-- `xctl_graph_nodes_total`: 图中节点总数（按类型）
-- `xctl_graph_edges_total`: 图中边总数（按类型）
-- `xctl_events_processed_total`: 已处理事件总数（按事件类型）
-- `xctl_process_resource_usage`: 进程资源使用（带标签）
-- `xctl_process_wait_time_seconds`: 进程等待时间（直方图）
+- `ark_graph_nodes_total`: 图中节点总数（按类型）
+- `ark_graph_edges_total`: 图中边总数（按类型）
+- `ark_events_processed_total`: 已处理事件总数（按事件类型）
+- `ark_process_resource_usage`: 进程资源使用（带标签）
+- `ark_process_wait_time_seconds`: 进程等待时间（直方图）
 
 ### 9. 审计日志 (Audit Log)
 
 **位置**: `agent/src/audit.rs`
 
 **职责**:
-- 记录所有 `xctl fix` 执行的系统级动作
+- 记录所有 `ark fix` 执行的系统级动作
 - 支持文件轮转（按大小，默认 100MB）
 - JSON 格式日志，满足企业合规要求
 
@@ -415,14 +415,14 @@ graph TB
 
 ### 资源隔离
 
-- **Hub**: 非 root 用户，严格资源限制（256Mi-512Mi），使用 `xctl-hub-sa` ServiceAccount
+- **Hub**: 非 root 用户，严格资源限制（256Mi-512Mi），使用 `ark-hub-sa` ServiceAccount
 - **Agent**: 特权模式，访问宿主机资源（hostPID/hostNetwork）
-- **IPC Socket**: 挂载到宿主机 `/var/run/xctl`
+- **IPC Socket**: 挂载到宿主机 `/var/run/ark`
 
 ### RBAC 权限
 
-- **ServiceAccount**: `xctl-hub-sa`（在 `xctl-system` 命名空间）
-- **ClusterRole**: `xctl-hub-controller`
+- **ServiceAccount**: `ark-hub-sa`（在 `ark-system` 命名空间）
+- **ClusterRole**: `ark-hub-controller`
   - `nodes`: get, list, patch（打污点）
   - `pods`: get, list, delete（查询和驱逐）
   - `pods/eviction`: create（优雅驱逐，尊重 PDB）

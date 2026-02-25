@@ -6,7 +6,7 @@ pub mod nvml;
 pub mod cann;
 
 use async_trait::async_trait;
-use xctl_core::event::Event;
+use ark_core::event::Event;
 use tokio::sync::mpsc;
 use crate::plugin::EventSource;
 

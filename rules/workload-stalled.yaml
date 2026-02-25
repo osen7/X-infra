@@ -48,7 +48,7 @@ solution_steps:
   
   - step: 3
     action: "如果确认卡死，执行清理"
-    command: "xctl zap <pid>"
+    command: "ark zap <pid>"
     manual: false
   
   - step: 4

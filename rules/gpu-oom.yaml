@@ -30,7 +30,7 @@ solution_steps:
   
   - step: 2
     action: "终止占用显存最大的进程"
-    command: "xctl zap <pid>"
+    command: "ark zap <pid>"
     manual: false
   
   - step: 3

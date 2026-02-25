@@ -31,12 +31,12 @@
 在 Linux 环境中运行：
 
 ```bash
-cd xctl-probe-ebpf
+cd ark-probe-ebpf
 chmod +x generate-bindings.sh
 ./generate-bindings.sh
 ```
 
-这将从 `/sys/kernel/btf/vmlinux` 生成 `xctl-probe-ebpf-ebpf/src/bindings/mod.rs`，包含：
+这将从 `/sys/kernel/btf/vmlinux` 生成 `ark-probe-ebpf-ebpf/src/bindings/mod.rs`，包含：
 - `struct sock`
 - `struct sock_common`
 
@@ -45,7 +45,7 @@ chmod +x generate-bindings.sh
 检查生成的文件：
 
 ```bash
-cat xctl-probe-ebpf-ebpf/src/bindings/mod.rs
+cat ark-probe-ebpf-ebpf/src/bindings/mod.rs
 ```
 
 应该看到类似这样的结构体定义：
@@ -72,17 +72,17 @@ pub struct sock {
 
 ```bash
 # 编译内核态 eBPF 程序
-cargo build --release -p xctl-probe-ebpf-ebpf
+cargo build --release -p ark-probe-ebpf-ebpf
 
 # 编译用户态程序
-cargo build --release -p xctl-probe-ebpf
+cargo build --release -p ark-probe-ebpf
 ```
 
 ### 步骤 4：测试运行
 
 ```bash
 # 需要 root 权限
-sudo ./target/release/xctl-probe-ebpf
+sudo ./target/release/ark-probe-ebpf
 ```
 
 ## 🔍 实现细节
@@ -161,7 +161,7 @@ sudo ./target/release/xctl-probe-ebpf
 
 **解决方案**：
 - 确保已运行 `generate-bindings.sh`
-- 检查 `xctl-probe-ebpf-ebpf/src/bindings/mod.rs` 是否存在
+- 检查 `ark-probe-ebpf-ebpf/src/bindings/mod.rs` 是否存在
 - 确保 `mod bindings;` 在 `main.rs` 中正确声明
 
 ### 问题 4：运行时 PID 不准确
@@ -169,7 +169,7 @@ sudo ./target/release/xctl-probe-ebpf
 如果仍然出现 PID 不准确：
 
 1. **检查 Map 是否正常工作**：
-   - 查看日志：`dmesg | grep xctl`
+   - 查看日志：`dmesg | grep ark`
    - 确认 `tcp_sendmsg` Hook 是否成功建立映射
 
 2. **验证四元组提取**：
@@ -208,4 +208,4 @@ sudo ./target/release/xctl-probe-ebpf
 3. **PID 准确**：`tcp_retransmit_skb` 中的 PID 与 `tcp_sendmsg` 中的 PID 一致
 4. **四元组完整**：日志中显示正确的 IP:Port 信息
 
-此时，xctl 已具备**像素级的"拥塞到进程"溯源能力**，这是整个项目最硬核的技术护城河！
+此时，Ark 已具备**像素级的"拥塞到进程"溯源能力**，这是整个项目最硬核的技术护城河！

@@ -1,6 +1,6 @@
 ---
 
-# 🚀 xctl 极简 AI 算力集群管控底座 - 演进路线图
+# 🚀 Ark 极简 AI 算力集群管控底座 - 演进路线图
 
 ## ✅ 现已完成：核心纪元（v1.0.0-RC）
 
@@ -11,7 +11,7 @@
 * [x] 基于事件流的时序因果图推导（`Consumes` / `WaitsOn` 边）
 * [x] UDS (Unix Domain Socket) IPC 极速通信，彻底解决端口冲突
 * [x] 纯文本 YAML 声明式专家规则库（零数据库依赖）
-* [x] 克制且防污染的 LLM 大模型外置诊断（`xctl diag`）
+* [x] 克制且防污染的 LLM 大模型外置诊断（`ark diag`）
 
 ### 2. 降维打击的探针群 (The Probes)
 
@@ -24,7 +24,7 @@
 * [x] 单体重构为 Cargo Workspace（Core / Agent / Hub / eBPF）
 * [x] Agent 边缘折叠上报（按需推送拓扑与异常）
 * [x] Hub 无状态全局内存图（基于 DashMap 的高并发处理）
-* [x] 全双工动作下发：`xctl cluster fix` 跨机器斩首与优雅降级
+* [x] 全双工动作下发：`ark cluster fix` 跨机器斩首与优雅降级
 
 ### 4. 云原生武装 (Cloud Native)
 
@@ -42,7 +42,7 @@
 ### 开源与布道体系
 
 * [x] **高逼格的 README 与文档库**：补充完整的架构图与数据流转图。
-* [ ] **Asciinema 终端演示录制**：直观展示混沌工程（网络丢包）下 `xctl` 的秒级诊断。
+* [ ] **Asciinema 终端演示录制**：直观展示混沌工程（网络丢包）下 `Ark` 的秒级诊断。
 * [ ] **自动化 CI/CD**：通过 GitHub Actions 实现多架构（x86/ARM64）的二进制文件预编译与发布。
 * [ ] **探针开发 SDK (Python/Rust)**：发布标准化的 JSONL 契约，鼓励社区提交海光、天数智芯等国产卡的探针。
 
@@ -54,8 +54,8 @@
 
 ### 1. 标准化指标暴露 (The Exporter)
 
-* [x] **Prometheus Metrics 端点**：让 `xctl` 将实时提取的 `WaitsOn` 等高维因果数据转化为 Prometheus 格式，供 Grafana 大盘消费。
-* [x] **Audit Log 审计日志**：将 `xctl fix` 执行的系统级动作记录并落盘，满足企业合规要求。
+* [x] **Prometheus Metrics 端点**：让 `Ark` 将实时提取的 `WaitsOn` 等高维因果数据转化为 Prometheus 格式，供 Grafana 大盘消费。
+* [x] **Audit Log 审计日志**：将 `ark fix` 执行的系统级动作记录并落盘，满足企业合规要求。
 
 ### 2. 深水区探针拓展 (Advanced Probes)
 
@@ -67,11 +67,11 @@
 
 ## 🎯 长期目标：高阶自愈纪元（v2.0.0+）
 
-*让 xctl 成为 K8s 调度器的底层“潜意识”。*
+*让 Ark 成为 K8s 调度器的底层"潜意识"。*
 
 ### 1. 调度器反哺 (Scheduler Feedback Loop)
 
-* [x] **Volcano / K8s 深度集成**：当 `xctl-hub` 诊断出某台机器物理级损坏（如持续 XID 报错或硬件降级）时，自动调用 K8s API 将该 Node 设为 `NoSchedule`（打污点），并使用 Eviction API 优雅驱逐异常 Pod。
+* [x] **Volcano / K8s 深度集成**：当 `ark-hub` 诊断出某台机器物理级损坏（如持续 XID 报错或硬件降级）时，自动调用 K8s API 将该 Node 设为 `NoSchedule`（打污点），并使用 Eviction API 优雅驱逐异常 Pod。
 * [ ] **拓扑感知反馈**：将网络拥塞的拓扑图反馈给调度器，让下一个训练任务避开故障交换机。
 
 ### 2. 训练框架深层联动 (Framework Symbiosis)

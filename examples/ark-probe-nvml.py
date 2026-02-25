@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-xctl NVML 探针：真实抓取 NVIDIA GPU 利用率
+Ark NVML 探针：真实抓取 NVIDIA GPU 利用率
 依赖: pynvml (pip install pynvml)
 
 输出格式：每行一个 JSON 对象（JSONL）

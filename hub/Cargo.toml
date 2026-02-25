@@ -1,14 +1,14 @@
 [package]
-name = "xctl-hub"
+name = "ark-hub"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "xctl-hub"
+name = "ark-hub"
 path = "src/main.rs"
 
 [dependencies]
-xctl-core = { path = "../core" }
+ark-core = { path = "../core" }
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

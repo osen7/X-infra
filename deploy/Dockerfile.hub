@@ -16,7 +16,7 @@ COPY hub/Cargo.toml hub/Cargo.toml
 COPY core core
 COPY hub hub
 
-RUN cargo build --release -p xctl-hub
+RUN cargo build --release -p ark-hub
 
 FROM debian:bookworm-slim
 
@@ -26,25 +26,25 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户
-RUN useradd -m -u 1000 xctl
+RUN useradd -m -u 1000 ark
 
 # 复制二进制文件
-COPY --from=builder /build/target/release/xctl-hub /opt/xctl/xctl-hub
+COPY --from=builder /build/target/release/ark-hub /opt/ark/ark-hub
 
 # 设置权限
-RUN chmod +x /opt/xctl/xctl-hub && \
-    chown -R xctl:xctl /opt/xctl
+RUN chmod +x /opt/ark/ark-hub && \
+    chown -R ark:ark /opt/ark
 
-WORKDIR /opt/xctl
+WORKDIR /opt/ark
 
-ENV PATH="/opt/xctl:${PATH}"
+ENV PATH="/opt/ark:${PATH}"
 
 # 暴露端口
 EXPOSE 8080 8081
 
 # 切换到非 root 用户
-USER xctl
+USER ark
 
 # 入口点
-ENTRYPOINT ["/opt/xctl/xctl-hub"]
+ENTRYPOINT ["/opt/ark/ark-hub"]
 CMD ["--ws-listen", "0.0.0.0:8080", "--http-listen", "0.0.0.0:8081"]

@@ -1,4 +1,4 @@
-# RBAC 配置：为 xctl-hub 提供 Kubernetes API 权限
+# RBAC 配置：为 ark-hub 提供 Kubernetes API 权限
 # 
 # 权限说明：
 # - nodes: get, list, patch (用于打污点和查询节点状态)
@@ -8,18 +8,18 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: xctl-hub-sa
-  namespace: xctl-system
+  name: ark-hub-sa
+  namespace: ark-system
   labels:
-    app: xctl-hub
+    app: ark-hub
     component: control-plane
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: xctl-hub-controller
+  name: ark-hub-controller
   labels:
-    app: xctl-hub
+    app: ark-hub
     component: control-plane
 rules:
   # Node 相关权限：查询和打污点
@@ -45,15 +45,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: xctl-hub-controller-binding
+  name: ark-hub-controller-binding
   labels:
-    app: xctl-hub
+    app: ark-hub
     component: control-plane
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: xctl-hub-controller
+  name: ark-hub-controller
 subjects:
   - kind: ServiceAccount
-    name: xctl-hub-sa
-    namespace: xctl-system
+    name: ark-hub-sa
+    namespace: ark-system

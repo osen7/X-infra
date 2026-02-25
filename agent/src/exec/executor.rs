@@ -81,8 +81,8 @@ impl ActionExecutor {
         #[cfg(unix)]
         {
             // 创建临时 cgroup
-            let cgroup_name = format!("xctl-{}", pid);
-            let cgroup_path = format!("/sys/fs/cgroup/xctl/{}", cgroup_name);
+            let cgroup_name = format!("ark-{}", pid);
+            let cgroup_path = format!("/sys/fs/cgroup/ark/{}", cgroup_name);
             
             // 创建 cgroup 目录
             let _ = Command::new("mkdir")

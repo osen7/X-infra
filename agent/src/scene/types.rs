@@ -48,7 +48,7 @@ pub struct AnalysisResult {
     pub root_causes: Vec<String>,
     pub confidence: f64,
     pub recommendations: Vec<String>,
-    /// 推荐的操作（用于未来的 xctl fix 命令）
+    /// 推荐的操作（用于未来的 ark fix 命令）
     pub recommended_actions: Vec<String>,
     /// 严重程度
     pub severity: Severity,

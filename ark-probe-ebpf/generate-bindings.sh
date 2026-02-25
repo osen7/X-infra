@@ -43,7 +43,7 @@ if [ ! -f /sys/kernel/btf/vmlinux ]; then
 fi
 
 # 创建 bindings 目录
-mkdir -p xctl-probe-ebpf-ebpf/src/bindings
+mkdir -p ark-probe-ebpf-ebpf/src/bindings
 
 # 生成绑定（只生成我们需要的结构体）
 echo "📦 生成内核结构体绑定..."
@@ -56,7 +56,7 @@ if aya-tool generate --help | grep -q "btf"; then
     # 新版本 aya-tool
     aya-tool generate \
         --btf /sys/kernel/btf/vmlinux \
-        --output xctl-probe-ebpf-ebpf/src/bindings/mod.rs \
+        --output ark-probe-ebpf-ebpf/src/bindings/mod.rs \
         --struct sock \
         --struct sock_common
 else
@@ -70,9 +70,9 @@ fi
 
 echo ""
 echo "✅ 内核绑定生成完成！"
-echo "   文件位置: xctl-probe-ebpf-ebpf/src/bindings/mod.rs"
+echo "   文件位置: ark-probe-ebpf-ebpf/src/bindings/mod.rs"
 echo ""
 echo "📝 下一步："
 echo "   1. 检查生成的绑定文件是否正确"
-echo "   2. 运行 cargo build -p xctl-probe-ebpf-ebpf 编译 eBPF 程序"
-echo "   3. 运行 cargo build -p xctl-probe-ebpf 编译用户态程序"
+echo "   2. 运行 cargo build -p ark-probe-ebpf-ebpf 编译 eBPF 程序"
+echo "   3. 运行 cargo build -p ark-probe-ebpf 编译用户态程序"

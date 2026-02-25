@@ -1,14 +1,14 @@
 //! Prometheus Metrics 收集模块
 //! 
-//! 暴露 xctl Agent 的指标供 Prometheus 抓取
+//! 暴露 Ark Agent 的指标供 Prometheus 抓取
 
 use prometheus::{
     register_counter_vec, register_gauge_vec, register_histogram_vec,
     CounterVec, GaugeVec, HistogramVec, Encoder, TextEncoder,
 };
 use std::sync::Arc;
-use xctl_core::graph::StateGraph;
-use xctl_core::event::EventType;
+use ark_core::graph::StateGraph;
+use ark_core::event::EventType;
 
 /// Metrics 收集器
 pub struct MetricsCollector {
@@ -31,45 +31,45 @@ impl MetricsCollector {
         Ok(Self {
             // 基础指标
             graph_nodes_total: register_gauge_vec!(
-                "xctl_graph_nodes_total",
+                "ark_graph_nodes_total",
                 "图中节点总数",
                 &["node_type"]
             )?,
             graph_edges_total: register_gauge_vec!(
-                "xctl_graph_edges_total",
+                "ark_graph_edges_total",
                 "图中边总数",
                 &["edge_type"]
             )?,
             events_processed_total: register_counter_vec!(
-                "xctl_events_processed_total",
+                "ark_events_processed_total",
                 "已处理事件总数",
                 &["event_type"]
             )?,
             probe_errors_total: register_counter_vec!(
-                "xctl_probe_errors_total",
+                "ark_probe_errors_total",
                 "探针错误计数",
                 &["probe_name"]
             )?,
             
             // 详细指标
             process_resource_usage: register_gauge_vec!(
-                "xctl_process_resource_usage",
+                "ark_process_resource_usage",
                 "进程资源使用",
                 &["pid", "job_id", "resource_type", "metric"]
             )?,
             process_wait_time_seconds: register_histogram_vec!(
-                "xctl_process_wait_time_seconds",
+                "ark_process_wait_time_seconds",
                 "进程等待时间",
                 &["pid", "job_id", "resource_type"],
                 vec![0.001, 0.01, 0.1, 1.0, 10.0, 60.0, 300.0]
             )?,
             error_count: register_counter_vec!(
-                "xctl_error_count",
+                "ark_error_count",
                 "错误计数",
                 &["error_type", "node_id"]
             )?,
             rule_matches_total: register_counter_vec!(
-                "xctl_rule_matches_total",
+                "ark_rule_matches_total",
                 "规则匹配次数",
                 &["rule_name"]
             )?,
@@ -85,9 +85,9 @@ impl MetricsCollector {
         let mut node_counts = std::collections::HashMap::new();
         for node in nodes.values() {
             let node_type = match node.node_type {
-                xctl_core::graph::NodeType::Process => "process",
-                xctl_core::graph::NodeType::Resource => "resource",
-                xctl_core::graph::NodeType::Error => "error",
+                ark_core::graph::NodeType::Process => "process",
+                ark_core::graph::NodeType::Resource => "resource",
+                ark_core::graph::NodeType::Error => "error",
             };
             *node_counts.entry(node_type).or_insert(0) += 1;
         }
@@ -103,9 +103,9 @@ impl MetricsCollector {
         let mut edge_counts = std::collections::HashMap::new();
         for edge in &edges {
             let edge_type = match edge.edge_type {
-                xctl_core::graph::EdgeType::Consumes => "consumes",
-                xctl_core::graph::EdgeType::WaitsOn => "waits_on",
-                xctl_core::graph::EdgeType::BlockedBy => "blocked_by",
+                ark_core::graph::EdgeType::Consumes => "consumes",
+                ark_core::graph::EdgeType::WaitsOn => "waits_on",
+                ark_core::graph::EdgeType::BlockedBy => "blocked_by",
             };
             *edge_counts.entry(edge_type).or_insert(0) += 1;
         }

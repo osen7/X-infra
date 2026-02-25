@@ -2,7 +2,7 @@ mod trait;
 
 pub use trait::{Actuator, EventSource};
 
-use xctl_core::event::Event;
+use ark_core::event::Event;
 use async_trait::async_trait;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};

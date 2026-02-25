@@ -1,10 +1,10 @@
-# xctl 探针示例
+# Ark 探针示例
 
-本目录包含 xctl 的各种探针实现示例。
+本目录包含 Ark 的各种探针实现示例。
 
 ## 探针列表
 
-### 1. xctl-probe-nvml.py（生产级）
+### 1. ark-probe-nvml.py（生产级）
 
 真实的 NVIDIA GPU 监控探针，使用 NVML API 抓取：
 - GPU 利用率
@@ -19,10 +19,10 @@
 **使用**:
 ```bash
 pip install pynvml
-cargo run -- run --probe examples/xctl-probe-nvml.py
+cargo run -- run --probe examples/ark-probe-nvml.py
 ```
 
-### 2. xctl-probe-network.py（网络监控）
+### 2. ark-probe-network.py（网络监控）
 
 基于 `/proc/net` 的网络探针，监控：
 - 网络接口带宽使用
@@ -34,7 +34,7 @@ cargo run -- run --probe examples/xctl-probe-nvml.py
 
 **使用**:
 ```bash
-cargo run -- run --probe examples/xctl-probe-network.py
+cargo run -- run --probe examples/ark-probe-network.py
 ```
 
 **环境变量**:
@@ -44,19 +44,19 @@ cargo run -- run --probe examples/xctl-probe-network.py
 
 使用 Rust Aya 框架实现的 eBPF 网络探针，提供内核级网络监控。
 
-**位置**: `../xctl-probe-ebpf/`（独立项目）
+**位置**: `../ark-probe-ebpf/`（独立项目）
 
 **文档**: 
 - [eBPF 网络探针文档](../docs/EBPF_NETWORK_PROBE.md)
 - [eBPF 探针集成指南](EBPF_PROBE_INTEGRATION.md)
 
-### 4. xctl-probe-dummy.py（测试用）
+### 4. ark-probe-dummy.py（测试用）
 
 模拟探针，用于测试和演示，生成随机事件。
 
 **使用**:
 ```bash
-cargo run -- run --probe examples/xctl-probe-dummy.py
+cargo run -- run --probe examples/ark-probe-dummy.py
 ```
 
 ## 探针开发指南
@@ -99,14 +99,14 @@ cargo run -- run --probe examples/xctl-probe-dummy.py
 
 ### 探针最佳实践
 
-1. **错误处理**: 探针崩溃不会影响 xctl 主进程，但应该优雅处理错误
+1. **错误处理**: 探针崩溃不会影响 Ark 主进程，但应该优雅处理错误
 2. **心跳机制**: 即使数据不变，也要定期发送状态事件（防止节点被清理）
 3. **性能**: 避免阻塞操作，保持低延迟
 4. **日志**: 错误信息输出到 stderr，正常事件输出到 stdout
 
 ### 开发新探针
 
-参考 `xctl-probe-nvml.py` 的实现：
+参考 `ark-probe-nvml.py` 的实现：
 
 ```python
 #!/usr/bin/env python3

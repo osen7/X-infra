@@ -8,7 +8,7 @@ use aya_bpf::{
     programs::ProbeContext,
 };
 
-use xctl_probe_ebpf_ebpf::RdmaEvent;
+use ark_probe_ebpf_ebpf::RdmaEvent;
 
 #[map]
 static mut RDMA_EVENTS: PerfEventArray<RdmaEvent> = PerfEventArray::with_max_entries(1024, 0);

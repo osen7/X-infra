@@ -1,7 +1,7 @@
-# 多阶段构建 Dockerfile：构建 xctl 和 xctl-hub
+# 多阶段构建 Dockerfile：构建 ark 和 ark-hub
 # 使用方法：
-#   docker build -t xctl:v1.0.0 --build-arg BINARY=xctl -f deploy/Dockerfile .
-#   docker build -t xctl-hub:v1.0.0 --build-arg BINARY=xctl-hub -f deploy/Dockerfile .
+#   docker build -t ark:v1.0.0 --build-arg BINARY=ark -f deploy/Dockerfile .
+#   docker build -t ark-hub:v1.0.0 --build-arg BINARY=ark-hub -f deploy/Dockerfile .
 
 # 构建阶段
 FROM rust:1.70-slim as builder
@@ -27,13 +27,13 @@ COPY agent agent
 COPY hub hub
 
 # 构建参数：指定要构建的二进制文件
-ARG BINARY=xctl
+ARG BINARY=ark
 
 # 构建二进制文件
-RUN if [ "$BINARY" = "xctl" ]; then \
-        cargo build --release -p xctl; \
-    elif [ "$BINARY" = "xctl-hub" ]; then \
-        cargo build --release -p xctl-hub; \
+RUN if [ "$BINARY" = "ark" ]; then \
+        cargo build --release -p ark; \
+    elif [ "$BINARY" = "ark-hub" ]; then \
+        cargo build --release -p ark-hub; \
     else \
         echo "Unknown BINARY: $BINARY"; exit 1; \
     fi
@@ -48,27 +48,27 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户
-RUN useradd -m -u 1000 xctl
+RUN useradd -m -u 1000 ark
 
 # 从构建阶段复制二进制文件
-ARG BINARY=xctl
-COPY --from=builder /build/target/release/$BINARY /opt/xctl/$BINARY
+ARG BINARY=ark
+COPY --from=builder /build/target/release/$BINARY /opt/ark/$BINARY
 
 # 设置权限
-RUN chmod +x /opt/xctl/$BINARY && \
-    chown -R xctl:xctl /opt/xctl
+RUN chmod +x /opt/ark/$BINARY && \
+    chown -R ark:ark /opt/ark
 
 # 创建必要的目录
-RUN mkdir -p /opt/xctl/rules /opt/xctl/probes /var/run/xctl && \
-    chown -R xctl:xctl /opt/xctl /var/run/xctl
+RUN mkdir -p /opt/ark/rules /opt/ark/probes /var/run/ark && \
+    chown -R ark:ark /opt/ark /var/run/ark
 
 # 切换到非 root 用户
-USER xctl
+USER ark
 
-WORKDIR /opt/xctl
+WORKDIR /opt/ark
 
 # 设置 PATH
-ENV PATH="/opt/xctl:${PATH}"
+ENV PATH="/opt/ark:${PATH}"
 
 # 暴露端口（Hub 使用）
 EXPOSE 8080 8081

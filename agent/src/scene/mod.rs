@@ -22,7 +22,7 @@ pub use storage_io_error::StorageIoErrorAnalyzer;
 pub use storage_slow::StorageSlowAnalyzer;
 pub use checkpoint_timeout::CheckpointTimeoutAnalyzer;
 
-use xctl_core::graph::StateGraph;
+use ark_core::graph::StateGraph;
 
 /// 场景识别器
 pub struct SceneIdentifier {
@@ -59,7 +59,7 @@ impl SceneIdentifier {
 
         // 检查 GPU/NPU 相关错误
         for edge in &edges {
-            if edge.from == pid_str && edge.edge_type == xctl_core::graph::EdgeType::BlockedBy {
+            if edge.from == pid_str && edge.edge_type == ark_core::graph::EdgeType::BlockedBy {
                 if let Some(node) = nodes.get(&edge.to) {
                     // GPU OOM
                     if node.id.starts_with("gpu-") || node.id.contains("gpu") {
@@ -93,7 +93,7 @@ impl SceneIdentifier {
 
         // 检查网络阻塞
         for edge in &edges {
-            if edge.from == pid_str && edge.edge_type == xctl_core::graph::EdgeType::WaitsOn {
+            if edge.from == pid_str && edge.edge_type == ark_core::graph::EdgeType::WaitsOn {
                 if edge.to.starts_with("network-") || edge.to.contains("net") {
                     return Some(SceneType::NetworkStall);
                 }
@@ -116,7 +116,7 @@ impl SceneIdentifier {
                     let mut has_io_wait = false;
                     
                     for edge in &edges {
-                        if edge.from == pid_str && edge.edge_type == xctl_core::graph::EdgeType::Consumes {
+                        if edge.from == pid_str && edge.edge_type == ark_core::graph::EdgeType::Consumes {
                             total_resources += 1;
                             if let Some(res_node) = nodes.get(&edge.to) {
                                 if let Some(util) = res_node.metadata.get("util") {
@@ -128,7 +128,7 @@ impl SceneIdentifier {
                                 }
                             }
                         }
-                        if edge.from == pid_str && edge.edge_type == xctl_core::graph::EdgeType::WaitsOn {
+                        if edge.from == pid_str && edge.edge_type == ark_core::graph::EdgeType::WaitsOn {
                             if edge.to.contains("network") || edge.to.contains("storage") {
                                 has_io_wait = true;
                             }

@@ -1,5 +1,5 @@
 use crate::ipc::IpcClient;
-use xctl_core::rules::RuleEngine;
+use ark_core::rules::RuleEngine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -294,7 +294,7 @@ pub async fn run_diagnosis(
     let client = IpcClient::new(socket_path);
 
     if !client.ping().await? {
-        return Err("无法连接到 daemon，请先运行: xctl run".into());
+        return Err("无法连接到 daemon，请先运行: ark run".into());
     }
 
     // 获取阻塞根因
@@ -383,7 +383,7 @@ pub async fn run_diagnosis(
     let client = IpcClient::new(port);
 
     if !client.ping().await? {
-        return Err("无法连接到 daemon，请先运行: xctl run".into());
+        return Err("无法连接到 daemon，请先运行: ark run".into());
     }
 
     // 获取阻塞根因

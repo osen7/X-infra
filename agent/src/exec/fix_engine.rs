@@ -3,7 +3,7 @@ use crate::exec::executor::ActionExecutor;
 use crate::scene::AnalysisResult;
 use std::collections::HashMap;
 
-/// xctl fix 执行引擎
+/// ark fix 执行引擎
 /// 
 /// 这是 OODA 循环中的 Act 层，负责执行诊断结果中的 recommended_actions
 pub struct FixEngine {

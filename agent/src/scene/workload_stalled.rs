@@ -1,4 +1,4 @@
-use xctl_core::graph::{EdgeType, StateGraph};
+use ark_core::graph::{EdgeType, StateGraph};
 use crate::scene::analyzer::SceneAnalyzer;
 use crate::scene::types::{AnalysisResult, SceneType, Severity};
 
@@ -85,7 +85,7 @@ impl SceneAnalyzer for WorkloadStalledAnalyzer {
         }
 
         let mut recommended_actions = Vec::new();
-        recommended_actions.push("如果确认卡死，执行 xctl zap 终止进程".to_string());
+        recommended_actions.push("如果确认卡死，执行 ark zap 终止进程".to_string());
         recommended_actions.push("检查是否有 Checkpoint 可以恢复".to_string());
 
         AnalysisResult {

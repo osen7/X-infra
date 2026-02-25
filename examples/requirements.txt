@@ -1,4 +1,4 @@
-# xctl 探针依赖
+# Ark 探针依赖
 # 安装: pip install -r requirements.txt
 
 # NVIDIA GPU 监控

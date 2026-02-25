@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-xctl 网络探针：监控网络 I/O 阻塞和延迟
+Ark 网络探针：监控网络 I/O 阻塞和延迟
 基于 /proc/net 和系统调用追踪
 
 输出格式：每行一个 JSON 对象（JSONL）

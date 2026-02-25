@@ -1,4 +1,4 @@
-# xctl 文档索引
+# Ark 文档索引
 
 ## 📚 核心文档（按生命周期）
 
@@ -58,4 +58,4 @@
 - [主 README](../README.md) - 项目概览和快速开始
 - [快速开始](../QUICKSTART.md) - 5 分钟上手指南
 - [探针示例](../examples/README.md) - 探针开发指南
-- [eBPF 探针项目](../xctl-probe-ebpf/README.md) - eBPF 探针完整文档
+- [eBPF 探针项目](../ark-probe-ebpf/README.md) - eBPF 探针完整文档

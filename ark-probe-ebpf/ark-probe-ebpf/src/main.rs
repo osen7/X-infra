@@ -10,12 +10,12 @@ use clap::Parser;
 use log::{info, warn};
 use std::convert::TryFrom;
 use tokio::signal;
-use xctl_probe_ebpf_ebpf::NetworkEvent;
+use ark_probe_ebpf_ebpf::NetworkEvent;
 
-/// xctl eBPF 网络探针
-/// 监控 TCP 重传事件，输出 JSONL 格式给 xctl 核心
+/// Ark eBPF 网络探针
+/// 监控 TCP 重传事件，输出 JSONL 格式给 Ark 核心
 #[derive(Parser)]
-#[command(name = "xctl-probe-ebpf")]
+#[command(name = "ark-probe-ebpf")]
 #[command(about = "eBPF 网络探针：监控 TCP 重传和丢包事件")]
 struct Cli {
     /// 输出格式：jsonl（默认）或 debug
@@ -33,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // 注意：实际运行时，eBPF 字节码应该从文件系统加载
     // 这里使用 include_bytes! 是为了简化部署，生产环境建议从文件加载
     let mut bpf = Bpf::load(include_bytes!(
-        "../target/bpfel-unknown-none/release/xctl-probe-ebpf-ebpf"
+        "../target/bpfel-unknown-none/release/ark-probe-ebpf-ebpf"
     ))?;
 
     // 初始化日志
@@ -139,7 +139,7 @@ fn output_event(event: &NetworkEvent, format: &str) {
                 format!("network-pid-{}", event.pid)
             };
             
-            // 输出标准 xctl 事件格式
+            // 输出标准 Ark 事件格式
             let json_event = serde_json::json!({
                 "ts": event.timestamp / 1_000_000, // 转换为毫秒
                 "event_type": "transport.drop",

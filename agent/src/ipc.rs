@@ -1,4 +1,4 @@
-use xctl_core::graph::StateGraph;
+use ark_core::graph::StateGraph;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -50,9 +50,9 @@ impl RpcResponse {
 /// 获取默认的 IPC Socket 路径
 #[cfg(unix)]
 pub fn default_socket_path() -> PathBuf {
-    // 优先使用 /var/run/xctl.sock（需要 root 权限）
+    // 优先使用 /var/run/ark.sock（需要 root 权限）
     // 如果不可写，则使用用户目录
-    let system_path = PathBuf::from("/var/run/xctl.sock");
+    let system_path = PathBuf::from("/var/run/ark.sock");
     if std::fs::metadata("/var/run").is_ok() {
         system_path
     } else {
@@ -60,8 +60,8 @@ pub fn default_socket_path() -> PathBuf {
         let mut home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
-        home.push(".xctl");
-        home.push("xctl.sock");
+        home.push(".ark");
+        home.push("ark.sock");
         home
     }
 }
@@ -119,7 +119,7 @@ impl IpcServer {
             std::fs::set_permissions(&self.socket_path, perms)?;
         }
         
-        println!("[xctl] IPC 服务器已启动，监听 Unix Socket: {}", self.socket_path.display());
+        println!("[ark] IPC 服务器已启动，监听 Unix Socket: {}", self.socket_path.display());
 
         loop {
             match listener.accept().await {
@@ -127,12 +127,12 @@ impl IpcServer {
                     let graph = Arc::clone(&self.graph);
                     tokio::spawn(async move {
                         if let Err(e) = handle_client_unix(stream, graph).await {
-                            eprintln!("[xctl] 处理客户端请求失败: {}", e);
+                            eprintln!("[ark] 处理客户端请求失败: {}", e);
                         }
                     });
                 }
                 Err(e) => {
-                    eprintln!("[xctl] 接受连接失败: {}", e);
+                    eprintln!("[ark] 接受连接失败: {}", e);
                 }
             }
         }
@@ -143,7 +143,7 @@ impl IpcServer {
         let addr = format!("127.0.0.1:{}", self.port);
         let listener = TcpListener::bind(&addr).await?;
         
-        println!("[xctl] IPC 服务器已启动，监听 TCP: {}", addr);
+        println!("[ark] IPC 服务器已启动，监听 TCP: {}", addr);
 
         loop {
             match listener.accept().await {
@@ -151,12 +151,12 @@ impl IpcServer {
                     let graph = Arc::clone(&self.graph);
                     tokio::spawn(async move {
                         if let Err(e) = handle_client_tcp(stream, graph).await {
-                            eprintln!("[xctl] 处理客户端 {} 请求失败: {}", addr, e);
+                            eprintln!("[ark] 处理客户端 {} 请求失败: {}", addr, e);
                         }
                     });
                 }
                 Err(e) => {
-                    eprintln!("[xctl] 接受连接失败: {}", e);
+                    eprintln!("[ark] 接受连接失败: {}", e);
                 }
             }
         }
