@@ -186,11 +186,25 @@ impl StateGraph {
         let mut edges = self.edges.write().await;
 
         // 确保资源节点存在
-        if !nodes.contains_key(&event.entity_id) {
+        // 对于 transport.drop 事件，entity_id 格式可能是 "network-pid-<PID>" 或 "eth0" 等
+        let resource_id = if event.entity_id.starts_with("network-") {
+            // eBPF 探针输出的格式：network-pid-<PID>
+            // 我们提取网络资源标识（可以是网卡名或通用网络资源）
+            if let Some(pid_from_entity) = event.entity_id.strip_prefix("network-pid-") {
+                // 如果有 PID，使用通用网络资源标识
+                "network".to_string()
+            } else {
+                event.entity_id.clone()
+            }
+        } else {
+            event.entity_id.clone()
+        };
+
+        if !nodes.contains_key(&resource_id) {
             nodes.insert(
-                event.entity_id.clone(),
+                resource_id.clone(),
                 Node {
-                    id: event.entity_id.clone(),
+                    id: resource_id.clone(),
                     node_type: NodeType::Resource,
                     last_update: event.ts,
                     metadata: HashMap::new(),
@@ -199,7 +213,7 @@ impl StateGraph {
         }
 
         // 更新资源状态
-        if let Some(node) = nodes.get_mut(&event.entity_id) {
+        if let Some(node) = nodes.get_mut(&resource_id) {
             let key = match event.event_type {
                 EventType::TransportBw => "bw",
                 EventType::TransportDrop => "drop",
@@ -209,26 +223,23 @@ impl StateGraph {
             node.last_update = event.ts;
         }
 
-        // 如果有 PID，根据事件类型建立 WaitsOn 边
-        // WaitsOn 边表示进程正在等待网络/存储资源完成
-        if let Some(pid) = event.pid {
-            let should_create_waitson = match event.event_type {
-                EventType::TransportDrop => {
-                    // 丢包事件：进程等待网络恢复
-                    true
-                }
-                EventType::TransportBw => {
-                    // 带宽事件：如果带宽很低（< 1 Mbps），可能是阻塞
-                    // 或者如果 value 包含特殊标记（如 "IO_WAIT"）
-                    event.value.contains("IO_WAIT") || 
-                    event.value.parse::<f64>().unwrap_or(1000.0) < 1.0
-                }
-                _ => false,
+        // 处理 transport.drop 事件：建立 WaitsOn 边
+        // 这是诊断闭环的关键：网络重传 -> 进程阻塞
+        if event.event_type == EventType::TransportDrop {
+            // 从事件中提取 PID
+            let pid = if let Some(pid) = event.pid {
+                pid
+            } else if let Some(pid_str) = event.entity_id.strip_prefix("network-pid-") {
+                // 如果 entity_id 是 "network-pid-<PID>" 格式，提取 PID
+                pid_str.parse::<u32>().unwrap_or(0)
+            } else {
+                0
             };
 
-            if should_create_waitson {
+            if pid > 0 {
                 let pid_str = format!("pid-{}", pid);
                 
+                // 确保进程节点存在
                 if !nodes.contains_key(&pid_str) {
                     nodes.insert(
                         pid_str.clone(),
@@ -236,24 +247,75 @@ impl StateGraph {
                             id: pid_str.clone(),
                             node_type: NodeType::Process,
                             last_update: event.ts,
-                            metadata: HashMap::new(),
+                            metadata: {
+                                let mut m = HashMap::new();
+                                m.insert("state".to_string(), "running".to_string());
+                                m
+                            },
                         },
                     );
                 }
 
+                // 检查是否已存在 WaitsOn 边
                 let edge_exists = edges.iter().any(|e| {
                     e.edge_type == EdgeType::WaitsOn
                         && e.from == pid_str
-                        && e.to == event.entity_id
+                        && e.to == resource_id
                 });
 
                 if !edge_exists {
                     edges.push(Edge {
                         edge_type: EdgeType::WaitsOn,
-                        from: pid_str,
-                        to: event.entity_id.clone(),
+                        from: pid_str.clone(),
+                        to: resource_id.clone(),
                         ts: event.ts,
                     });
+                    
+                    // 日志输出（用于调试）
+                    eprintln!(
+                        "🔗 [图引擎] 建立阻塞关联: {} WaitsOn {} (transport.drop)",
+                        pid_str, resource_id
+                    );
+                }
+            }
+        }
+
+        // 处理 TransportBw 事件（带宽低时也可能阻塞）
+        if event.event_type == EventType::TransportBw {
+            if let Some(pid) = event.pid {
+                let should_create_waitson = 
+                    event.value.contains("IO_WAIT") || 
+                    event.value.parse::<f64>().unwrap_or(1000.0) < 1.0;
+
+                if should_create_waitson {
+                    let pid_str = format!("pid-{}", pid);
+                    
+                    if !nodes.contains_key(&pid_str) {
+                        nodes.insert(
+                            pid_str.clone(),
+                            Node {
+                                id: pid_str.clone(),
+                                node_type: NodeType::Process,
+                                last_update: event.ts,
+                                metadata: HashMap::new(),
+                            },
+                        );
+                    }
+
+                    let edge_exists = edges.iter().any(|e| {
+                        e.edge_type == EdgeType::WaitsOn
+                            && e.from == pid_str
+                            && e.to == resource_id
+                    });
+
+                    if !edge_exists {
+                        edges.push(Edge {
+                            edge_type: EdgeType::WaitsOn,
+                            from: pid_str,
+                            to: resource_id.clone(),
+                            ts: event.ts,
+                        });
+                    }
                 }
             }
         }

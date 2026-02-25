@@ -1,0 +1,42 @@
+# xctl 文档索引
+
+## 📚 核心文档（按生命周期）
+
+### 1. 项目规划
+- **[ROADMAP.md](ROADMAP.md)** - 项目路线图、开发计划和里程碑
+
+### 2. 核心功能文档
+- **[RULES_ENGINE.md](RULES_ENGINE.md)** - 规则引擎：声明式 YAML 规则系统
+  - 规则定义格式
+  - 条件匹配逻辑
+  - 场景分析集成
+
+- **[EBPF_NETWORK_PROBE.md](EBPF_NETWORK_PROBE.md)** - eBPF 网络探针
+  - 内核级网络监控
+  - TCP 重传捕获
+  - 零侵入监控
+
+- **[EBPF_PID_TRAP_FIX.md](EBPF_PID_TRAP_FIX.md)** - eBPF PID 陷阱修复
+  - 软中断上下文问题
+  - Socket 映射解决方案
+  - 技术实现细节
+
+### 3. 已完成功能
+- **[UDS_IPC_MIGRATION.md](UDS_IPC_MIGRATION.md)** - Unix Domain Socket IPC 迁移
+  - 生产级 IPC 改造
+  - 权限控制
+  - 跨平台兼容
+
+## 🎯 文档组织原则
+
+- **聚焦项目生命周期**：只保留与项目开发、使用、维护直接相关的文档
+- **技术深度**：深入核心功能的技术实现细节
+- **实用导向**：提供可操作的指南和示例
+
+## 📖 其他位置文档
+
+- [主 README](../README.md) - 项目概览和快速开始
+- [使用指南](../README_USAGE.md) - 完整功能说明
+- [快速开始](../QUICKSTART.md) - 5 分钟上手指南
+- [探针示例](../examples/README.md) - 探针开发指南
+- [eBPF 探针项目](../xctl-probe-ebpf/README.md) - eBPF 探针完整文档

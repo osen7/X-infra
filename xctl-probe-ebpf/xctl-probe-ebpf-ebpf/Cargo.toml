@@ -1,0 +1,15 @@
+[package]
+name = "xctl-probe-ebpf-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aya-bpf = "0.12"
+aya-log-ebpf = "0.2"
+
+[profile.release]
+strip = true
+lto = true

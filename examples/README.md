@@ -40,11 +40,15 @@ cargo run -- run --probe examples/xctl-probe-network.py
 **环境变量**:
 - `XCTL_NETWORK_INTERVAL`: 采样间隔（秒），默认 2.0
 
-### 3. xctl-probe-ebpf.rs（eBPF 探针框架）
+### 3. eBPF 网络探针（生产级）
 
-eBPF 网络探针的参考实现框架。提供零开销的网络监控，但需要 root 权限。
+使用 Rust Aya 框架实现的 eBPF 网络探针，提供内核级网络监控。
 
-详见 [ebpf/README.md](ebpf/README.md)
+**位置**: `../xctl-probe-ebpf/`（独立项目）
+
+**文档**: 
+- [eBPF 网络探针文档](../docs/EBPF_NETWORK_PROBE.md)
+- [eBPF 探针集成指南](EBPF_PROBE_INTEGRATION.md)
 
 ### 4. xctl-probe-dummy.py（测试用）
 

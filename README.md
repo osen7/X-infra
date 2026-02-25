@@ -39,10 +39,10 @@ cargo run --release -- diag <PID>  # AI 诊断
 
 - [使用指南](README_USAGE.md) - 完整的功能说明和使用示例
 - [快速开始](QUICKSTART.md) - 5 分钟上手指南
+- [项目路线图](docs/ROADMAP.md) - 开发计划和里程碑
+- [规则引擎](docs/RULES_ENGINE.md) - 声明式规则系统
+- [eBPF 网络探针](docs/EBPF_NETWORK_PROBE.md) - 内核级网络监控
 - [探针开发](examples/README.md) - 如何开发自定义探针
-- [网络探针](examples/NETWORK_PROBE.md) - 网络监控和 WaitsOn 能力
-- [AI 诊断](examples/DIAG.md) - 大模型诊断功能
-- [架构参考](docs/ARCHITECTURE_REFERENCE.md) - 根因分析系统设计参考和演进路线
 
 ## 🏗️ 架构设计
 
