@@ -3,6 +3,7 @@ mod exec;
 mod ipc;
 mod diag;
 mod scene;
+mod hub_forwarder;
 
 use clap::{Parser, Subcommand};
 use xctl_core::event::{Event, EventBus};
@@ -12,6 +13,7 @@ use plugin::SubprocessProbe;
 use exec::{SystemActuator, FixEngine};
 use diag::run_diagnosis;
 use scene::{SceneIdentifier, SceneType};
+use hub_forwarder::{HubForwarder, get_node_id};
 use std::sync::Arc;
 use std::path::PathBuf;
 
@@ -41,6 +43,9 @@ enum Commands {
         /// 探针脚本路径（可选，默认使用内置 dummy_probe）
         #[arg(long)]
         probe: Option<PathBuf>,
+        /// Hub WebSocket 地址（可选，如 ws://hub.example.com:8080）
+        #[arg(long)]
+        hub_url: Option<String>,
     },
     /// 查询当前活跃进程列表
     Ps {
@@ -109,6 +114,25 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// 集群级命令：查询全局状态和根因分析
+    Cluster {
+        #[command(subcommand)]
+        command: ClusterCommands,
+        /// Hub HTTP API 地址（如 http://hub.example.com:8081）
+        #[arg(long, default_value = "http://localhost:8081")]
+        hub: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClusterCommands {
+    /// 查询集群中所有活跃进程
+    Ps,
+    /// 分析集群中某个 job 的根因
+    Why {
+        /// 目标 job_id
+        job_id: String,
+    },
 }
 
 #[tokio::main]
@@ -117,12 +141,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         #[cfg(unix)]
-        Commands::Run { socket_path, probe } => {
-            run_daemon(socket_path, probe).await?;
+        Commands::Run { socket_path, probe, hub_url } => {
+            run_daemon(socket_path, probe, hub_url).await?;
         }
         #[cfg(windows)]
-        Commands::Run { port, probe } => {
-            run_daemon(port, probe).await?;
+        Commands::Run { port, probe, hub_url } => {
+            run_daemon(port, probe, hub_url).await?;
         }
         #[cfg(unix)]
         Commands::Ps { socket_path } => {
@@ -159,6 +183,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Fix { pid, port, rules_dir, yes } => {
             fix_process(pid, port, rules_dir, yes).await?;
         }
+        Commands::Cluster { command, hub } => {
+            match command {
+                ClusterCommands::Ps => {
+                    cluster_ps(&hub).await?;
+                }
+                ClusterCommands::Why { job_id } => {
+                    cluster_why(&hub, &job_id).await?;
+                }
+            }
+        }
     }
 
     Ok(())
@@ -169,6 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_daemon(
     socket_path: Option<PathBuf>,
     probe_path: Option<PathBuf>,
+    hub_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[xctl] 启动事件总线...");
     
@@ -272,6 +307,7 @@ async fn run_daemon(
 async fn run_daemon(
     port: u16,
     probe_path: Option<PathBuf>,
+    hub_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[xctl] 启动事件总线...");
     
@@ -304,16 +340,41 @@ async fn run_daemon(
         })
     };
 
-    // 启动事件消费和图形更新任务
+    // 初始化 Hub 转发器（如果配置了 hub_url）
+    let mut hub_forwarder: Option<HubForwarder> = None;
+    if let Some(ref url) = hub_url {
+        let node_id = get_node_id();
+        let mut forwarder = HubForwarder::new(url.clone(), node_id.clone());
+        if let Err(e) = forwarder.connect().await {
+            eprintln!("[xctl] 警告：无法连接到 Hub {}: {}，将继续运行但不推送事件", url, e);
+        } else {
+            hub_forwarder = Some(forwarder);
+            println!("[xctl] Hub 转发器已启动，节点ID: {}", node_id);
+        }
+    }
+
+    // 启动事件消费和图形更新任务（同时推送到 Hub）
     let graph_handle = {
         let graph = Arc::clone(&graph);
+        let hub_forwarder = hub_forwarder.map(|f| Arc::new(tokio::sync::RwLock::new(f)));
         let mut rx = bus.receiver();
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
                     Some(event) => {
+                        // 更新本地图
                         if let Err(e) = graph.process_event(&event).await {
                             eprintln!("[xctl] 处理事件失败: {}", e);
+                        }
+                        
+                        // 推送到 Hub（如果配置了且事件需要推送）
+                        if let Some(ref forwarder_arc) = hub_forwarder {
+                            let forwarder = forwarder_arc.read().await;
+                            if forwarder.should_forward(&event).await {
+                                if let Err(e) = forwarder.forward_event(event.clone()).await {
+                                    eprintln!("[xctl] 推送事件到 Hub 失败: {}", e);
+                                }
+                            }
                         }
                     }
                     None => {
@@ -929,4 +990,81 @@ fn create_analysis_from_causes(scene: SceneType, causes: &[String]) -> scene::An
         recommended_actions,
         severity: scene::Severity::Warning,
     }
+}
+
+/// 集群级进程列表查询
+async fn cluster_ps(hub_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use colored::*;
+    
+    let url = format!("{}/api/v1/ps", hub_url.trim_end_matches('/'));
+    let response = reqwest::get(&url).await?;
+    let json: serde_json::Value = response.json().await?;
+    
+    if let Some(processes) = json.get("processes").and_then(|p| p.as_array()) {
+        if processes.is_empty() {
+            println!("集群中没有活跃进程");
+            return Ok(());
+        }
+        
+        println!(
+            "{:>20} | {:>12} | {:>15} | {}",
+            "NODE_ID".bright_cyan(),
+            "JOB_ID".bright_cyan(),
+            "PID".bright_cyan(),
+            "STATE".bright_cyan()
+        );
+        println!("{}", "-".repeat(80));
+        
+        for proc in processes {
+            let id = proc["id"].as_str().unwrap_or("-");
+            let job_id = proc["job_id"].as_str().unwrap_or("-");
+            let state = proc["state"].as_str().unwrap_or("unknown");
+            
+            // 从 id 中提取节点和 PID
+            let (node_id, pid) = if id.contains("::") {
+                let parts: Vec<&str> = id.split("::").collect();
+                (parts[0], parts.get(1).unwrap_or(&"-"))
+            } else {
+                ("local", id)
+            };
+            
+            println!("{:>20} | {:>12} | {:>15} | {}", node_id, job_id, pid, state);
+        }
+    } else {
+        eprintln!("错误：无法解析 Hub 响应");
+    }
+    
+    Ok(())
+}
+
+/// 集群级根因分析
+async fn cluster_why(hub_url: &str, job_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use colored::*;
+    
+    let url = format!("{}/api/v1/why?job_id={}", hub_url.trim_end_matches('/'), job_id);
+    let response = reqwest::get(&url).await?;
+    let json: serde_json::Value = response.json().await?;
+    
+    if let Some(error) = json.get("error") {
+        eprintln!("错误: {}", error.as_str().unwrap_or("unknown"));
+        return Ok(());
+    }
+    
+    println!("🔍 集群级根因分析：job_id = {}", job_id.bright_green());
+    println!();
+    
+    if let Some(causes) = json.get("causes").and_then(|c| c.as_array()) {
+        if causes.is_empty() {
+            println!("未发现阻塞根因");
+        } else {
+            println!("发现的根因：");
+            for (i, cause) in causes.iter().enumerate() {
+                if let Some(cause_str) = cause.as_str() {
+                    println!("  {}. {}", i + 1, cause_str.bright_red());
+                }
+            }
+        }
+    }
+    
+    Ok(())
 }

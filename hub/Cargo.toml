@@ -16,3 +16,4 @@ clap = { workspace = true }
 colored = { workspace = true }
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
+warp = "0.3"

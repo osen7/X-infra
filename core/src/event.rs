@@ -50,6 +50,8 @@ pub struct Event {
     pub job_id: Option<String>,   // 关联的任务ID (如果有)
     pub pid: Option<u32>,         // 关联的进程PID (如果有)
     pub value: String,            // 具体载荷 (如 "85", "XID_79")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,  // 节点ID（用于 Hub 命名空间隔离，如 "node-a", "node-b"）
 }
 
 impl Event {
@@ -73,6 +75,7 @@ impl Event {
             job_id,
             pid,
             value,
+            node_id: None, // 默认无节点ID，由 Agent 在推送时注入
         }
     }
 }

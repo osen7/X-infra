@@ -53,6 +53,16 @@ impl StateGraph {
         }
     }
 
+    /// 根据 event.node_id 为节点 ID 添加命名空间前缀
+    /// 如果 event.node_id 存在，返回 "{node_id}::{node_id}"，否则返回原 ID
+    fn namespace_node_id(&self, event: &Event, node_id: &str) -> String {
+        if let Some(ref node_id_prefix) = event.node_id {
+            format!("{}::{}", node_id_prefix, node_id)
+        } else {
+            node_id.to_string()
+        }
+    }
+
     /// 处理事件，更新图状态
     pub async fn process_event(&self, event: &Event) -> Result<(), String> {
         match event.event_type {
@@ -89,6 +99,7 @@ impl StateGraph {
     async fn handle_process_state(&self, event: &Event) -> Result<(), String> {
         if let Some(pid) = event.pid {
             let pid_str = format!("pid-{}", pid);
+            let pid_str = self.namespace_node_id(event, &pid_str);
             let mut nodes = self.nodes.write().await;
 
             if event.value == "start" {
@@ -124,12 +135,13 @@ impl StateGraph {
         let mut nodes = self.nodes.write().await;
         let mut edges = self.edges.write().await;
 
-        // 确保资源节点存在
-        if !nodes.contains_key(&event.entity_id) {
+        // 确保资源节点存在（应用命名空间）
+        let resource_id = self.namespace_node_id(event, &event.entity_id);
+        if !nodes.contains_key(&resource_id) {
             nodes.insert(
-                event.entity_id.clone(),
+                resource_id.clone(),
                 Node {
-                    id: event.entity_id.clone(),
+                    id: resource_id.clone(),
                     node_type: NodeType::Resource,
                     last_update: event.ts,
                     metadata: HashMap::new(),
@@ -138,7 +150,7 @@ impl StateGraph {
         }
 
         // 更新资源状态
-        if let Some(node) = nodes.get_mut(&event.entity_id) {
+        if let Some(node) = nodes.get_mut(&resource_id) {
             node.metadata.insert("util".to_string(), event.value.clone());
             node.last_update = event.ts;
         }
@@ -146,6 +158,7 @@ impl StateGraph {
         // 如果有 PID，建立 Consumes 边
         if let Some(pid) = event.pid {
             let pid_str = format!("pid-{}", pid);
+            let pid_str = self.namespace_node_id(event, &pid_str);
             
             // 确保进程节点存在
             if !nodes.contains_key(&pid_str) {
@@ -171,7 +184,7 @@ impl StateGraph {
                 edges.push(Edge {
                     edge_type: EdgeType::Consumes,
                     from: pid_str,
-                    to: event.entity_id.clone(),
+                    to: resource_id.clone(),
                     ts: event.ts,
                 });
             }
@@ -187,10 +200,10 @@ impl StateGraph {
 
         // 确保资源节点存在
         // 对于 transport.drop 事件，entity_id 格式可能是 "network-pid-<PID>" 或 "eth0" 等
-        let resource_id = if event.entity_id.starts_with("network-") {
+        let resource_id_base = if event.entity_id.starts_with("network-") {
             // eBPF 探针输出的格式：network-pid-<PID>
             // 我们提取网络资源标识（可以是网卡名或通用网络资源）
-            if let Some(pid_from_entity) = event.entity_id.strip_prefix("network-pid-") {
+            if let Some(_pid_from_entity) = event.entity_id.strip_prefix("network-pid-") {
                 // 如果有 PID，使用通用网络资源标识
                 "network".to_string()
             } else {
@@ -199,6 +212,7 @@ impl StateGraph {
         } else {
             event.entity_id.clone()
         };
+        let resource_id = self.namespace_node_id(event, &resource_id_base);
 
         if !nodes.contains_key(&resource_id) {
             nodes.insert(
@@ -238,6 +252,7 @@ impl StateGraph {
 
             if pid > 0 {
                 let pid_str = format!("pid-{}", pid);
+                let pid_str = self.namespace_node_id(event, &pid_str);
                 
                 // 确保进程节点存在
                 if !nodes.contains_key(&pid_str) {
@@ -289,6 +304,7 @@ impl StateGraph {
 
                 if should_create_waitson {
                     let pid_str = format!("pid-{}", pid);
+                    let pid_str = self.namespace_node_id(event, &pid_str);
                     
                     if !nodes.contains_key(&pid_str) {
                         nodes.insert(
@@ -334,7 +350,8 @@ impl StateGraph {
         let mut nodes = self.nodes.write().await;
         let mut edges = self.edges.write().await;
 
-        let error_id = format!("error-{}", event.entity_id);
+        let error_id_base = format!("error-{}", event.entity_id);
+        let error_id = self.namespace_node_id(event, &error_id_base);
         
         // 创建错误节点
         if !nodes.contains_key(&error_id) {
@@ -354,7 +371,8 @@ impl StateGraph {
         }
 
         // 找到所有使用该资源的进程，建立 BlockedBy 边
-        let resource_id = event.entity_id.clone();
+        let resource_id_base = event.entity_id.clone();
+        let resource_id = self.namespace_node_id(event, &resource_id_base);
         let affected_pids: Vec<String> = {
             edges
                 .iter()

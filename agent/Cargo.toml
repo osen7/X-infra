@@ -16,3 +16,5 @@ clap = { workspace = true }
 colored = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
