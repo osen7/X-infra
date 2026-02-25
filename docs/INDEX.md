@@ -5,7 +5,18 @@
 ### 1. 项目规划
 - **[ROADMAP.md](ROADMAP.md)** - 项目路线图、开发计划和里程碑
 
-### 2. 核心功能文档
+### 2. 架构设计
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - 系统架构设计文档
+  - 系统架构总览（Mermaid 图表）
+  - 数据流转图（单机/集群模式）
+  - 核心组件详解
+  - 组件交互图
+  - 数据模型定义
+  - 部署架构
+  - 安全设计
+  - 性能特性
+
+### 3. 核心功能文档
 - **[RULES_ENGINE.md](RULES_ENGINE.md)** - 规则引擎：声明式 YAML 规则系统
   - 规则定义格式
   - 条件匹配逻辑
@@ -17,7 +28,12 @@
   - 零侵入监控
   - PID 陷阱修复（软中断上下文问题、Socket 映射解决方案）
 
-### 3. 已完成功能
+- **[WORKSPACE_ARCHITECTURE.md](WORKSPACE_ARCHITECTURE.md)** - Workspace 架构
+  - Cargo Workspace 结构
+  - 组件职责划分
+  - 依赖关系
+
+### 4. 已完成功能
 - **[UDS_IPC_MIGRATION.md](UDS_IPC_MIGRATION.md)** - Unix Domain Socket IPC 迁移
   - 生产级 IPC 改造
   - 权限控制

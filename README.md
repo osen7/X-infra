@@ -52,6 +52,7 @@ kubectl get pods -n xctl-system
 
 - [使用指南](README_USAGE.md) - 完整的功能说明和使用示例
 - [快速开始](QUICKSTART.md) - 5 分钟上手指南
+- [架构设计](docs/ARCHITECTURE.md) - 系统架构和数据流转详解
 - [Kubernetes 部署](deploy/README.md) - 生产级 K8s 部署指南
 - [项目路线图](docs/ROADMAP.md) - 开发计划和里程碑
 - [规则引擎](docs/RULES_ENGINE.md) - 声明式规则系统
@@ -61,12 +62,80 @@ kubectl get pods -n xctl-system
 
 ## 🏗️ 架构设计
 
+### 系统架构
+
+```mermaid
+graph TB
+    subgraph "单机节点 (Agent)"
+        Probe[探针层<br/>NVML/eBPF/自定义]
+        EventBus[事件总线]
+        StateGraph[状态图引擎]
+        RuleEngine[规则引擎]
+        IPC[IPC 服务]
+    end
+    
+    subgraph "全局中控 (Hub)"
+        WSServer[WebSocket 服务器]
+        GlobalGraph[全局状态图]
+        HTTPAPI[HTTP API]
+    end
+    
+    Probe -->|事件流| EventBus
+    EventBus -->|处理| StateGraph
+    StateGraph -->|匹配| RuleEngine
+    StateGraph -->|查询| IPC
+    
+    EventBus -->|边缘折叠| WSServer
+    WSServer -->|更新| GlobalGraph
+    GlobalGraph -->|查询| HTTPAPI
+```
+
+详细架构说明请查看 [架构设计文档](docs/ARCHITECTURE.md)
+
 ### 核心原则
 
 - **事件引擎为核心**：所有底层信号转化为追加写入的事件流
 - **KISS 原则**：单机可运行，拒绝过度设计
 - **探针彻底解耦**：核心不包含硬件 SDK，探针通过 stdout 输出 JSONL
 - **内存极其克制**：使用 Ring Buffer 和无锁通道处理高频事件
+
+### 数据流转
+
+#### 单机模式
+
+```mermaid
+sequenceDiagram
+    participant Probe as 探针
+    participant EventBus as 事件总线
+    participant Graph as 状态图
+    participant Rule as 规则引擎
+    participant CLI as CLI
+    
+    Probe->>EventBus: JSONL 事件
+    EventBus->>Graph: 更新图
+    Graph->>Rule: 匹配规则
+    CLI->>Graph: 查询根因
+    Graph-->>CLI: 返回结果
+```
+
+#### 集群模式
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant Hub as Hub
+    participant SRE as SRE
+    
+    Agent->>Hub: WebSocket 推送事件
+    Hub->>Hub: 更新全局图
+    SRE->>Hub: HTTP 查询
+    Hub-->>SRE: 返回结果
+    SRE->>Hub: HTTP 下发命令
+    Hub->>Agent: WebSocket 命令
+    Agent-->>Hub: 执行结果
+```
+
+详细数据流转请查看 [架构设计文档](docs/ARCHITECTURE.md)
 
 ### 数据模型
 
