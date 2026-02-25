@@ -42,6 +42,7 @@ cargo run --release -- diag <PID>  # AI 诊断
 - [探针开发](examples/README.md) - 如何开发自定义探针
 - [网络探针](examples/NETWORK_PROBE.md) - 网络监控和 WaitsOn 能力
 - [AI 诊断](examples/DIAG.md) - 大模型诊断功能
+- [架构参考](docs/ARCHITECTURE_REFERENCE.md) - 根因分析系统设计参考和演进路线
 
 ## 🏗️ 架构设计
 

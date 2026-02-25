@@ -4,6 +4,8 @@ mod plugin;
 mod exec;
 mod ipc;
 mod diag;
+mod rules;
+mod scene;
 
 use clap::{Parser, Subcommand};
 use event::{Event, EventBus};
@@ -65,6 +67,9 @@ enum Commands {
         /// 大模型提供商（openai/claude/local，默认从环境变量读取）
         #[arg(long)]
         provider: Option<String>,
+        /// 规则文件目录（默认: ./rules）
+        #[arg(long)]
+        rules_dir: Option<PathBuf>,
     },
 }
 
@@ -85,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Zap { pid } => {
             zap_process(pid).await?;
         }
-        Commands::Diag { pid, port, provider } => {
-            diagnose_process(pid, port, provider).await?;
+        Commands::Diag { pid, port, provider, rules_dir } => {
+            diagnose_process(pid, port, provider, rules_dir).await?;
         }
     }
 
@@ -258,6 +263,9 @@ async fn query_processes(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
 /// 查询进程阻塞根因（通过 IPC）
 async fn query_why(pid: u32, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    use colored::*;
+    use crate::ipc::IpcClient;
+    
     let client = IpcClient::new(port);
     
     // 检查 daemon 是否运行
@@ -270,7 +278,9 @@ async fn query_why(pid: u32, port: u16) -> Result<(), Box<dyn std::error::Error>
     // 查询根因
     let causes = client.why_process(pid).await?;
 
-    use colored::*;
+    // 尝试场景识别和分析（需要访问图状态，当前通过 IPC 无法直接访问）
+    // 这里先使用基本的根因分析，场景分析功能可以在未来扩展 IPC 接口后启用
+    
     if causes.is_empty() {
         println!(
             "进程 {} 未发现阻塞问题",
@@ -284,6 +294,22 @@ async fn query_why(pid: u32, port: u16) -> Result<(), Box<dyn std::error::Error>
         pid.to_string().bright_green()
     );
     println!("{}", "-".repeat(60));
+
+    // 尝试识别场景类型（基于根因文本）
+    let scene_hint = if causes.iter().any(|c| c.contains("GPU") || c.contains("OOM") || c.contains("显存")) {
+        Some("GPU OOM")
+    } else if causes.iter().any(|c| c.contains("网络") || c.contains("network") || c.contains("等待资源")) {
+        Some("网络阻塞")
+    } else if causes.iter().any(|c| c.contains("exit") || c.contains("crash") || c.contains("failed")) {
+        Some("进程崩溃")
+    } else {
+        None
+    };
+
+    if let Some(scene) = scene_hint {
+        println!("  [场景识别] {}", scene.bright_cyan());
+        println!();
+    }
 
     for (idx, cause) in causes.iter().enumerate() {
         if cause.starts_with("等待资源") {
@@ -321,6 +347,7 @@ async fn diagnose_process(
     pid: u32,
     port: u16,
     provider: Option<String>,
+    rules_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use colored::*;
 
@@ -330,8 +357,18 @@ async fn diagnose_process(
     );
     println!("[xctl] 收集诊断信息...\n");
 
+    // 如果没有指定规则目录，尝试使用默认的 ./rules
+    let rules_path = rules_dir.or_else(|| {
+        let default = PathBuf::from("rules");
+        if default.exists() {
+            Some(default)
+        } else {
+            None
+        }
+    });
+
     // 执行诊断
-    let diagnosis = match run_diagnosis(pid, port, provider).await {
+    let diagnosis = match run_diagnosis(pid, port, provider, rules_path).await {
         Ok(d) => d,
         Err(e) => {
             eprintln!("[xctl] 诊断失败: {}", e);

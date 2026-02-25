@@ -1,0 +1,55 @@
+name: "网络阻塞场景"
+scene: "network_stall"
+priority: 90
+
+# 场景特征（匹配条件）
+conditions:
+  - type: "event"
+    event_type: "transport.drop"
+    value_threshold: 10  # 丢包率 > 10%
+  
+  - type: "graph"
+    edge_type: "waits_on"
+    from_pattern: "pid-*"
+    to_pattern: "network-*"
+
+# 根因模式
+root_cause_pattern:
+  primary: "网络阻塞导致进程等待"
+  secondary:
+    - "网络带宽不足"
+    - "网络丢包严重"
+    - "RDMA 连接异常"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查网络带宽使用情况"
+    command: "iftop -t -s 10"
+    manual: false
+  
+  - step: 2
+    action: "检查网络丢包统计"
+    command: "cat /proc/net/snmp | grep -i drop"
+    manual: false
+  
+  - step: 3
+    action: "检查 RDMA 连接状态（如果使用）"
+    command: "ibstat"
+    manual: false
+  
+  - step: 4
+    action: "调整网络配置或联系网络管理员"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "transport.drop"
+  - "transport.bw"
+  - "error.net"
+
+# 适用条件
+applicability:
+  min_confidence: 0.75
+  required_events:
+    - "transport.drop"

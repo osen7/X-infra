@@ -1,0 +1,60 @@
+name: "进程崩溃场景"
+scene: "process_crash"
+priority: 80
+
+# 场景特征（匹配条件）
+conditions:
+  - type: "event"
+    event_type: "process.state"
+    value_pattern: "exit|crash|failed"
+  
+  - type: "graph"
+    edge_type: "blocked_by"
+    from_pattern: "pid-*"
+    to_pattern: "error-*"
+
+# 根因模式
+root_cause_pattern:
+  primary: "进程异常退出"
+  secondary:
+    - "应用错误"
+    - "资源不足（OOM）"
+    - "依赖服务不可用"
+    - "配置错误"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查进程退出码"
+    command: "dmesg | tail -20"
+    manual: false
+  
+  - step: 2
+    action: "检查系统日志"
+    command: "journalctl -u <service> -n 50"
+    manual: false
+  
+  - step: 3
+    action: "检查资源使用情况（内存、CPU）"
+    command: "free -h && top -bn1 | head -20"
+    manual: false
+  
+  - step: 4
+    action: "检查依赖服务状态"
+    manual: true
+  
+  - step: 5
+    action: "根据错误日志修复问题并重启进程"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "process.state"
+  - "error.hw"
+  - "error.net"
+
+# 适用条件
+applicability:
+  min_confidence: 0.7
+  required_events:
+    - "process.state"

@@ -471,6 +471,16 @@ impl StateGraph {
             }
         }
     }
+
+    /// 异步获取所有边（用于规则匹配）
+    pub async fn get_all_edges_async(&self) -> Vec<Edge> {
+        self.edges.read().await.clone()
+    }
+
+    /// 异步获取所有节点（用于场景分析）
+    pub async fn get_nodes_async(&self) -> HashMap<String, Node> {
+        self.nodes.read().await.clone()
+    }
 }
 
 impl Default for StateGraph {

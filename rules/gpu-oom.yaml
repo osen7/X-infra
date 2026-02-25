@@ -1,0 +1,55 @@
+name: "GPU OOM 场景"
+scene: "gpu_oom"
+priority: 100
+
+# 场景特征（匹配条件）
+conditions:
+  - type: "event"
+    event_type: "error.hw"
+    entity_id_pattern: "gpu-*"
+    value_pattern: "OOM|out of memory|显存不足"
+  
+  - type: "event"
+    event_type: "compute.mem"
+    value_threshold: 95  # 显存使用率 > 95%
+
+# 根因模式
+root_cause_pattern:
+  primary: "GPU 显存不足"
+  secondary:
+    - "进程显存泄漏"
+    - "批处理大小过大"
+    - "多进程竞争显存"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查进程显存使用情况"
+    command: "nvidia-smi --query-compute-apps=pid,used_memory --format=csv"
+    manual: false
+  
+  - step: 2
+    action: "终止占用显存最大的进程"
+    command: "xctl zap <pid>"
+    manual: false
+  
+  - step: 3
+    action: "降低批处理大小或模型精度"
+    manual: true
+  
+  - step: 4
+    action: "检查是否有显存泄漏（长期运行后显存持续增长）"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "compute.mem"
+  - "error.hw"
+  - "process.state"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "compute.mem"
+    - "error.hw"

@@ -1,7 +1,9 @@
 use crate::ipc::IpcClient;
+use crate::rules::RuleEngine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// 诊断结果
 #[derive(Debug, Clone)]
@@ -285,6 +287,7 @@ pub async fn run_diagnosis(
     pid: u32,
     port: u16,
     llm_provider: Option<String>,
+    rules_dir: Option<PathBuf>,
 ) -> Result<Diagnosis, Box<dyn std::error::Error>> {
     // 连接到 daemon
     let client = IpcClient::new(port);
@@ -299,7 +302,47 @@ pub async fn run_diagnosis(
     // 获取进程列表（用于上下文）
     let processes = client.list_processes().await?;
 
-    // 创建 LLM 客户端
+    // 尝试加载规则引擎并匹配规则
+    if let Some(rules_path) = rules_dir {
+        if let Ok(rule_engine) = RuleEngine::load_from_dir(&rules_path) {
+            // 从图中提取信息进行规则匹配
+            // 注意：这里我们需要获取图状态，但当前 IPC 接口不直接提供
+            // 为了简化，我们基于根因分析结果来匹配规则
+            // 未来可以扩展 IPC 接口以获取更详细的图状态
+            
+            // 创建虚拟事件列表（从根因和进程信息中提取）
+            let virtual_events = extract_virtual_events_from_causes(&causes, &processes);
+            
+            // 尝试匹配规则（需要图状态，这里先跳过图条件匹配）
+            // 简化版本：只匹配事件条件
+            if let Some(rule) = rule_engine.match_first_simple(&virtual_events).await {
+                // 规则匹配成功，返回规则中的解决方案
+                let mut recommendation = String::new();
+                recommendation.push_str(&format!("【规则匹配: {}】\n\n", rule.name));
+                recommendation.push_str(&format!("根因: {}\n\n", rule.root_cause_pattern.primary));
+                recommendation.push_str("解决方案:\n");
+                
+                for step in &rule.solution_steps {
+                    recommendation.push_str(&format!("{}. {}\n", step.step, step.action));
+                    if let Some(cmd) = &step.command {
+                        recommendation.push_str(&format!("   命令: {}\n", cmd));
+                    }
+                    if step.manual {
+                        recommendation.push_str("   [需要手动执行]\n");
+                    }
+                }
+                
+                return Ok(Diagnosis {
+                    pid,
+                    causes,
+                    recommendation,
+                    confidence: 0.9, // 规则匹配置信度较高
+                });
+            }
+        }
+    }
+
+    // 规则未匹配，调用大模型
     let llm_client = if let Some(provider_str) = llm_provider {
         let provider = LlmProvider::from_str(&provider_str);
         let api_key = match provider {
@@ -326,4 +369,60 @@ pub async fn run_diagnosis(
     diagnosis.causes = causes;
 
     Ok(diagnosis)
+}
+
+/// 从根因和进程信息中提取虚拟事件（用于规则匹配）
+fn extract_virtual_events_from_causes(
+    causes: &[String],
+    processes: &[serde_json::Value],
+) -> Vec<crate::event::Event> {
+    use crate::event::{Event, EventType};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let mut events = Vec::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // 从根因中提取错误事件
+    for cause in causes {
+        if cause.contains("error.hw") || cause.contains("GPU") || cause.contains("OOM") {
+            events.push(Event {
+                ts: now,
+                event_type: EventType::ErrorHw,
+                entity_id: "gpu-*".to_string(),
+                job_id: None,
+                pid: None,
+                value: cause.clone(),
+            });
+        } else if cause.contains("network") || cause.contains("网络") {
+            events.push(Event {
+                ts: now,
+                event_type: EventType::ErrorNet,
+                entity_id: "network-*".to_string(),
+                job_id: None,
+                pid: None,
+                value: cause.clone(),
+            });
+        }
+    }
+
+    // 从进程信息中提取事件
+    for proc in processes {
+        if let Some(state) = proc["state"].as_str() {
+            if state == "blocked" || state == "waiting" {
+                events.push(Event {
+                    ts: now,
+                    event_type: EventType::ProcessState,
+                    entity_id: format!("pid-{}", proc["pid"].as_u64().unwrap_or(0)),
+                    job_id: None,
+                    pid: proc["pid"].as_u64().map(|p| p as u32),
+                    value: state.to_string(),
+                });
+            }
+        }
+    }
+
+    events
 }
