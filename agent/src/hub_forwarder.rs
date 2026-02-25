@@ -5,17 +5,24 @@
 //! - 过滤高频波动（如 gpu.util 的微小变化）
 
 use xctl_core::event::{Event, EventType};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::net::TcpStream;
+use std::collections::HashSet;
 use serde_json;
+use crate::exec::executor::ActionExecutor;
+use crate::exec::action::ActionType;
 
 /// Hub 事件转发器
 pub struct HubForwarder {
     hub_url: String,
     node_id: String,
-    ws_sender: Option<Arc<RwLock<Option<futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>>>>>,
+    ws_sender: Option<Arc<RwLock<Option<WsSender>>>>,
+    command_listener_handle: Option<tokio::task::JoinHandle<()>>,
+    forwarded_bindings: Arc<RwLock<HashSet<(u32, String)>>>,
+    last_util_values: Arc<RwLock<std::collections::HashMap<(u32, String), f64>>>,
 }
 
 impl HubForwarder {
@@ -25,6 +32,7 @@ impl HubForwarder {
             hub_url,
             node_id,
             ws_sender: None,
+            command_listener_handle: None,
             forwarded_bindings: Arc::new(RwLock::new(HashSet::new())),
             last_util_values: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
@@ -33,14 +41,107 @@ impl HubForwarder {
     /// 连接到 Hub WebSocket 服务器
     pub async fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let url = url::Url::parse(&self.hub_url)?;
-        let (ws_stream, _) = connect_async(url).await?;
-        let (write, _read) = ws_stream.split();
+        let ws_stream = connect_async(url).await?.0;
+        let (write, read) = ws_stream.split();
         
+        // 保存 write 端用于发送事件
         let sender = Arc::new(RwLock::new(Some(write)));
         self.ws_sender = Some(sender);
         
+        // 启动命令监听任务
+        let listener_handle = tokio::spawn(async move {
+            let mut receiver = read;
+            while let Some(msg) = receiver.next().await {
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        // 解析 Hub 下发的命令
+                        if let Ok(cmd) = serde_json::from_str::<HubCommand>(&text) {
+                            if let Err(e) = Self::handle_command(cmd).await {
+                                eprintln!("[hub-forwarder] 执行命令失败: {}", e);
+                            }
+                        } else {
+                            // 不是命令，可能是其他消息，忽略
+                        }
+                    }
+                    Ok(Message::Close(_)) => {
+                        println!("[hub-forwarder] Hub 关闭连接");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("[hub-forwarder] 接收消息错误: {}", e);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+        
+        self.command_listener_handle = Some(listener_handle);
+        
         println!("[hub-forwarder] 已连接到 Hub: {}", self.hub_url);
         Ok(())
+    }
+    
+    /// 处理 Hub 下发的命令
+    async fn handle_command(cmd: HubCommand) -> Result<(), Box<dyn std::error::Error>> {
+        match cmd.intent.as_str() {
+            "fix" => {
+                println!("[hub-forwarder] 收到修复命令: PID={}, action={:?}", 
+                    cmd.target_pid, cmd.action);
+                
+                // 根据 action 字符串创建 ActionType
+                let action = if let Some(action_str) = &cmd.action {
+                    Self::action_from_string(action_str)?
+                } else {
+                    // 默认：优雅降级
+                    ActionType::GracefulShutdown {
+                        signal: 10, // SIGUSR1
+                        wait_seconds: 10,
+                        force_kill: true,
+                    }
+                };
+                
+                // 执行动作
+                let executor = ActionExecutor::new();
+                match executor.execute(&action, cmd.target_pid).await {
+                    Ok(msg) => {
+                        println!("[hub-forwarder] 命令执行成功: {}", msg);
+                    }
+                    Err(e) => {
+                        eprintln!("[hub-forwarder] 命令执行失败: {}", e);
+                        return Err(e.into());
+                    }
+                }
+            }
+            _ => {
+                eprintln!("[hub-forwarder] 未知命令意图: {}", cmd.intent);
+            }
+        }
+        Ok(())
+    }
+    
+    /// 从字符串创建 ActionType
+    fn action_from_string(action_str: &str) -> Result<ActionType, String> {
+        match action_str.to_lowercase().as_str() {
+            "gracefulshutdown" | "graceful_shutdown" => {
+                Ok(ActionType::GracefulShutdown {
+                    signal: 10,
+                    wait_seconds: 10,
+                    force_kill: true,
+                })
+            }
+            "killprocess" | "kill_process" | "kill" => {
+                Ok(ActionType::KillProcess)
+            }
+            "signal" | "sigusr1" => {
+                Ok(ActionType::Signal { signal: 10 })
+            }
+            _ => {
+                // 尝试使用 from_recommendation 解析
+                ActionType::from_recommendation(action_str)
+                    .ok_or_else(|| format!("未知动作类型: {}", action_str))
+            }
+        }
     }
 
     /// 判断事件是否应该推送到 Hub（边缘折叠逻辑）
@@ -141,6 +242,14 @@ impl HubForwarder {
         
         Err("WebSocket 连接未建立".into())
     }
+}
+
+/// Hub 命令结构
+#[derive(serde::Deserialize)]
+struct HubCommand {
+    intent: String,
+    target_pid: u32,
+    action: Option<String>,
 }
 
 /// 获取当前节点 ID（使用 hostname）

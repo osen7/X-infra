@@ -7,12 +7,13 @@ use xctl_core::event::Event;
 use xctl_core::graph::{StateGraph, NodeType};
 use clap::Parser;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio::sync::{RwLock, mpsc};
+use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use warp::Filter;
 use serde_json::json;
+use dashmap::DashMap;
 
 #[derive(Parser)]
 #[command(name = "xctl-hub")]
@@ -37,18 +38,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建全局状态图
     let global_graph = Arc::new(StateGraph::new());
     
+    // 创建 WebSocket 连接管理器（node_id -> sender）
+    let connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>> = Arc::new(DashMap::new());
+    
     // 启动 WebSocket 服务器
     let ws_listen = cli.ws_listen.clone();
     let ws_handle = {
         let graph = Arc::clone(&global_graph);
+        let conns = Arc::clone(&connections);
         tokio::spawn(async move {
             let listener = TcpListener::bind(&ws_listen).await?;
             println!("✅ WebSocket 服务器已启动，等待节点连接...");
             
             while let Ok((stream, addr)) = listener.accept().await {
                 let graph = Arc::clone(&graph);
+                let conns = Arc::clone(&conns);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(stream, addr, graph).await {
+                    if let Err(e) = handle_connection(stream, addr, graph, conns).await {
                         eprintln!("[hub] 处理连接 {} 时出错: {}", addr, e);
                     }
                 });
@@ -62,8 +68,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let http_listen = cli.http_listen.clone();
     let http_handle = {
         let graph = Arc::clone(&global_graph);
+        let conns = Arc::clone(&connections);
         tokio::spawn(async move {
-            let api = create_api_routes(graph);
+            let api = create_api_routes(graph, conns);
             println!("✅ HTTP API 服务器已启动");
             warp::serve(api).run(([0, 0, 0, 0], http_listen.split(':').last().unwrap_or("8081").parse().unwrap_or(8081))).await;
         })
@@ -89,11 +96,32 @@ async fn handle_connection(
     stream: TcpStream,
     addr: std::net::SocketAddr,
     graph: Arc<StateGraph>,
+    connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[hub] 新节点连接: {}", addr);
     
     let ws_stream = accept_async(stream).await?;
-    let (_write, mut read) = ws_stream.split();
+    let (mut write, mut read) = ws_stream.split();
+    
+    // 创建用于发送消息的通道
+    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+    
+    // 从连接地址生成默认 node_id（Agent 会在第一个事件中提供真实的 node_id）
+    let mut node_id = format!("node-{}", addr.ip());
+    
+    // 立即注册连接（使用默认 node_id，后续可能被事件中的 node_id 更新）
+    connections.insert(node_id.clone(), tx.clone());
+    println!("[hub] 注册节点连接: {} (临时)", node_id);
+    
+    // 启动消息转发任务（从通道转发到 WebSocket write 端）
+    let write_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if let Err(e) = write.send(msg).await {
+                eprintln!("[hub] 发送消息失败: {}", e);
+                break;
+            }
+        }
+    });
     
     // 读取事件并更新全局图
     while let Some(msg) = read.next().await {
@@ -102,16 +130,25 @@ async fn handle_connection(
                 // 解析事件
                 match serde_json::from_str::<Event>(&text) {
                     Ok(mut event) => {
-                        // 确保 node_id 已设置（从连接地址推断，如果未设置）
-                        if event.node_id.is_none() {
-                            event.node_id = Some(format!("node-{}", addr.ip()));
+                        // 如果事件中包含 node_id，使用它并更新连接表
+                        if let Some(event_node_id) = &event.node_id {
+                            if *event_node_id != node_id {
+                                // node_id 发生变化，更新连接表
+                                connections.remove(&node_id);
+                                node_id = event_node_id.clone();
+                                connections.insert(node_id.clone(), tx.clone());
+                                println!("[hub] 更新节点连接: {}", node_id);
+                            }
+                        } else {
+                            // 事件中没有 node_id，使用默认值
+                            event.node_id = Some(node_id.clone());
                         }
                         
                         // 更新全局图
                         if let Err(e) = graph.process_event(&event).await {
                             eprintln!("[hub] 处理事件失败: {}", e);
                         } else {
-                            println!("[hub] 收到事件: {:?} from {}", event.event_type, event.node_id.as_ref().unwrap_or(&"unknown".to_string()));
+                            println!("[hub] 收到事件: {:?} from {}", event.event_type, node_id);
                         }
                     }
                     Err(e) => {
@@ -120,30 +157,59 @@ async fn handle_connection(
                 }
             }
             Message::Close(_) => {
-                println!("[hub] 节点 {} 断开连接", addr);
+                println!("[hub] 节点 {} 断开连接", node_id);
                 break;
             }
             _ => {}
         }
     }
     
+    // 从连接表中移除
+    connections.remove(&node_id);
+    println!("[hub] 节点 {} 已从连接表移除", node_id);
+    
+    // 等待写任务结束
+    write_task.abort();
+    
     Ok(())
+}
+
+/// Warp Filter：注入 StateGraph 状态
+fn with_graph(
+    graph: Arc<StateGraph>,
+) -> impl Filter<Extract = (Arc<StateGraph>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || graph.clone())
+}
+
+/// Warp Filter：注入连接管理器
+fn with_connections(
+    connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
+) -> impl Filter<Extract = (Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || connections.clone())
+}
+
+/// Fix 请求结构
+#[derive(serde::Deserialize)]
+struct FixRequest {
+    node_id: String,
+    target_pid: u32,
+    action: Option<String>, // 可选，默认 "GracefulShutdown"
 }
 
 /// 创建 HTTP API 路由
 fn create_api_routes(
     graph: Arc<StateGraph>,
+    connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let graph_clone = graph.clone();
+    let graph_filter = with_graph(graph.clone());
+    let conns_filter = with_connections(connections.clone());
     
     // GET /api/v1/why?job_id=xxx
-    let why_route = warp::path("api")
-        .and(warp::path("v1"))
-        .and(warp::path("why"))
+    let why_route = warp::path!("api" / "v1" / "why")
         .and(warp::query::<std::collections::HashMap<String, String>>())
-        .and_then(move |params: std::collections::HashMap<String, String>| {
-            let graph = Arc::clone(&graph_clone);
-            async move {
+        .and(graph_filter.clone())
+        .and_then(
+            |params: std::collections::HashMap<String, String>, graph: Arc<StateGraph>| async move {
                 if let Some(job_id) = params.get("job_id") {
                     match cluster_why(graph, job_id).await {
                         Ok(causes) => Ok(warp::reply::json(&json!({
@@ -159,34 +225,78 @@ fn create_api_routes(
                         "error": "missing job_id parameter"
                     })))
                 }
-            }
-        });
+            },
+        );
     
     // GET /api/v1/ps
-    let ps_route = warp::path("api")
-        .and(warp::path("v1"))
-        .and(warp::path("ps"))
-        .and_then(move || {
-            let graph = Arc::clone(&graph);
-            async move {
-                let processes = graph.get_active_processes().await;
-                let result: Vec<serde_json::Value> = processes
-                    .iter()
-                    .map(|node| {
-                        json!({
-                            "id": node.id,
-                            "job_id": node.metadata.get("job_id").unwrap_or(&"-".to_string()),
-                            "state": node.metadata.get("state").unwrap_or(&"unknown".to_string()),
-                        })
+    let ps_route = warp::path!("api" / "v1" / "ps")
+        .and(graph_filter.clone())
+        .and_then(|graph: Arc<StateGraph>| async move {
+            let processes = graph.get_active_processes().await;
+            let result: Vec<serde_json::Value> = processes
+                .iter()
+                .map(|node| {
+                    json!({
+                        "id": node.id,
+                        "job_id": node.metadata.get("job_id").unwrap_or(&"-".to_string()),
+                        "state": node.metadata.get("state").unwrap_or(&"unknown".to_string()),
                     })
-                    .collect();
-                Ok::<_, warp::Rejection>(warp::reply::json(&json!({
-                    "processes": result
-                })))
+                })
+                .collect();
+            Ok::<_, warp::Rejection>(warp::reply::json(&json!({
+                "processes": result
+            })))
+        });
+    
+    // POST /api/v1/fix
+    let fix_route = warp::path!("api" / "v1" / "fix")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(conns_filter)
+        .and_then(|req: FixRequest, conns: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>| async move {
+            // 查找节点连接
+            if let Some(sender) = conns.get(&req.node_id) {
+                // 构建命令 JSON
+                let command = json!({
+                    "intent": "fix",
+                    "target_pid": req.target_pid,
+                    "action": req.action.as_ref().unwrap_or(&"GracefulShutdown".to_string())
+                });
+                
+                // 发送命令
+                if let Ok(json_str) = serde_json::to_string(&command) {
+                    if sender.send(Message::Text(json_str)).is_ok() {
+                        Ok(warp::reply::json(&json!({
+                            "success": true,
+                            "message": format!("命令已发送到节点 {}", req.node_id)
+                        })))
+                    } else {
+                        Ok(warp::reply::with_status(
+                            warp::reply::json(&json!({
+                                "error": "发送命令失败：连接已关闭"
+                            })),
+                            warp::http::StatusCode::INTERNAL_SERVER_ERROR
+                        ))
+                    }
+                } else {
+                    Ok(warp::reply::with_status(
+                        warp::reply::json(&json!({
+                            "error": "序列化命令失败"
+                        })),
+                        warp::http::StatusCode::INTERNAL_SERVER_ERROR
+                    ))
+                }
+            } else {
+                Ok(warp::reply::with_status(
+                    warp::reply::json(&json!({
+                        "error": format!("节点 {} 未连接", req.node_id)
+                    })),
+                    warp::http::StatusCode::NOT_FOUND
+                ))
             }
         });
     
-    why_route.or(ps_route)
+    why_route.or(ps_route).or(fix_route)
 }
 
 /// 集群级根因分析：根据 job_id 查找所有相关进程并分析根因
@@ -214,25 +324,18 @@ async fn cluster_why(
     }
     
     // 2. 对每个进程节点，在全局图中发起根因分析
+    // 直接使用完整的节点 ID（包含命名空间），避免命名空间丢失
     for pid_id in job_pids {
-        // 从节点 ID 中提取 PID（格式可能是 "node-a::pid-1234"）
-        let pid = if let Some(pid_part) = pid_id.split("::").last() {
-            pid_part.strip_prefix("pid-").and_then(|s| s.parse::<u32>().ok())
-        } else {
-            pid_id.strip_prefix("pid-").and_then(|s| s.parse::<u32>().ok())
-        };
-        
-        if let Some(pid) = pid {
-            let causes = graph.find_root_cause(pid).await;
-            for cause in causes {
-                // 添加节点信息到根因描述中
-                let node_info = if pid_id.contains("::") {
-                    format!("{}: {}", pid_id.split("::").next().unwrap_or("unknown"), cause)
-                } else {
-                    cause
-                };
-                global_causes.push(node_info);
-            }
+        let causes = graph.find_root_cause_by_id(&pid_id).await;
+        for cause in causes {
+            // 添加节点信息到根因描述中
+            let node_info = if pid_id.contains("::") {
+                let node_name = pid_id.split("::").next().unwrap_or("unknown");
+                format!("{}: {}", node_name, cause)
+            } else {
+                cause
+            };
+            global_causes.push(node_info);
         }
     }
     

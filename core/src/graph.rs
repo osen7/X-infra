@@ -498,15 +498,21 @@ impl StateGraph {
             .collect()
     }
 
-    /// 逆向深度优先搜索：查找进程阻塞的根因
+    /// 逆向深度优先搜索：查找进程阻塞的根因（通过 PID）
     pub async fn find_root_cause(&self, pid: u32) -> Vec<String> {
         let pid_str = format!("pid-{}", pid);
+        self.find_root_cause_by_id(&pid_str).await
+    }
+
+    /// 逆向深度优先搜索：查找进程阻塞的根因（通过完整节点 ID，支持命名空间）
+    /// 这是集群模式下的标准方法，可以直接处理 "node-a::pid-1234" 格式的节点 ID
+    pub async fn find_root_cause_by_id(&self, node_id: &str) -> Vec<String> {
         let edges = self.edges.read().await;
         let nodes = self.nodes.read().await;
         let mut visited = HashSet::new();
         let mut causes = Vec::new();
 
-        self.dfs_backward(&pid_str, &edges, &nodes, &mut visited, &mut causes).await;
+        self.dfs_backward(node_id, &edges, &nodes, &mut visited, &mut causes).await;
 
         causes
     }

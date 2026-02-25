@@ -18,3 +18,4 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
+url = "2.5"
