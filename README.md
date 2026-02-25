@@ -14,6 +14,9 @@
 - 💻 **极简 CLI**：类似 Docker 的 C/S 架构，轻量级客户端
 - 🛡️ **生产级**：内存安全、错误处理完善、OOM 防护
 - ☸️ **Kubernetes 原生**：DaemonSet + Deployment，一键部署到万卡集群
+- 🤖 **自动驾驶控制面**：自动检测硬件故障，打污点、驱逐 Pod，与 K8s 调度器深度集成
+- 📊 **Prometheus 集成**：暴露标准 Metrics 端点，无缝融入 Grafana 监控体系
+- 📝 **审计日志**：完整记录所有系统干预动作，满足企业合规要求
 
 ## 🚀 快速开始
 
@@ -32,21 +35,50 @@ cargo run -p xctl --release -- run --probe examples/xctl-probe-nvml.py
 cargo run -p xctl --release -- ps
 cargo run -p xctl --release -- why <PID>
 cargo run -p xctl --release -- diag <PID>  # AI 诊断
+cargo run -p xctl --release -- fix <PID> --audit-log /var/log/xctl/audit.log  # 修复并记录审计日志
+
+# 查看 Prometheus Metrics（Agent 端）
+curl http://localhost:9091/metrics
 ```
 
 详细使用指南请查看 [README_USAGE.md](README_USAGE.md) 和 [QUICKSTART.md](QUICKSTART.md)。
 
+### 🌐 集群模式（Hub + Agent）
+
+```bash
+# 终端 1: 启动 Hub（启用 K8s 控制器）
+cargo run -p xctl-hub --release -- --enable-k8s-controller
+
+# 终端 2: 启动 Agent 并连接到 Hub
+cargo run -p xctl --release -- run --hub-url ws://localhost:8080
+
+# 终端 3: 集群级查询和修复
+cargo run -p xctl --release -- cluster ps --hub http://localhost:8081
+cargo run -p xctl --release -- cluster why job-1234 --hub http://localhost:8081
+cargo run -p xctl --release -- cluster fix job-1234 --hub http://localhost:8081
+```
+
 ### ☸️ Kubernetes 部署（生产环境推荐）
 
 ```bash
-# 一键部署到 Kubernetes 集群
+# 一键部署到 Kubernetes 集群（包含 RBAC 配置）
 kubectl apply -k deploy/
 
 # 查看部署状态
 kubectl get pods -n xctl-system
+kubectl get deployment -n xctl-system xctl-hub
+kubectl get daemonset -n xctl-system xctl-agent
+
+# 查看 Hub 的 Prometheus Metrics
+kubectl port-forward -n xctl-system svc/xctl-hub 8081:8081
+curl http://localhost:8081/metrics
+
+# 验证 RBAC 配置
+kubectl get clusterrole xctl-hub-controller
+kubectl get clusterrolebinding xctl-hub-controller-binding
 ```
 
-详细部署指南请查看 [deploy/README.md](deploy/README.md)。
+**重要**: Hub 默认启用 K8s 控制器，会自动检测硬件故障并隔离节点。详细部署指南请查看 [deploy/README.md](deploy/README.md)。
 
 ## 📖 文档
 
@@ -58,6 +90,7 @@ kubectl get pods -n xctl-system
 - [规则引擎](docs/RULES_ENGINE.md) - 声明式规则系统
 - [eBPF 网络探针](docs/EBPF_NETWORK_PROBE.md) - 内核级网络监控
 - [eBPF CO-RE 实现](xctl-probe-ebpf/CO-RE_IMPLEMENTATION.md) - CO-RE 四元组提取指南
+- [Kubernetes 部署](deploy/README.md) - 生产级 K8s 部署指南（含 RBAC 配置）
 - [探针开发](examples/README.md) - 如何开发自定义探针
 
 ## 🏗️ 架构设计
@@ -78,6 +111,8 @@ graph TB
         WSServer[WebSocket 服务器]
         GlobalGraph[全局状态图]
         HTTPAPI[HTTP API]
+        K8sController[K8s 控制器<br/>自动隔离故障节点]
+        Metrics[Prometheus Metrics]
     end
     
     Probe -->|事件流| EventBus
@@ -88,6 +123,9 @@ graph TB
     EventBus -->|边缘折叠| WSServer
     WSServer -->|更新| GlobalGraph
     GlobalGraph -->|查询| HTTPAPI
+    GlobalGraph -->|检测故障| K8sController
+    K8sController -->|打污点/驱逐| K8s
+    GlobalGraph -->|指标| Metrics
 ```
 
 详细架构说明请查看 [架构设计文档](docs/ARCHITECTURE.md)
@@ -160,9 +198,11 @@ x-infra/
 │       ├── plugin/      # 探针系统
 │       ├── exec/        # 执行引擎
 │       └── scene/       # 场景分析器
-├── hub/                 # 全局中控（xctl-hub，开发中）
+├── hub/                 # 全局中控（xctl-hub）
 │   └── src/
-│       └── main.rs
+│       ├── main.rs      # Hub 主程序
+│       ├── metrics.rs   # Prometheus Metrics
+│       └── k8s_controller.rs  # K8s 控制器（自动隔离故障节点）
 ├── xctl-probe-ebpf/     # eBPF 网络探针（Rust Aya 框架）
 │   ├── xctl-probe-ebpf/         # 用户态程序
 │   └── xctl-probe-ebpf-ebpf/    # 内核态 eBPF 程序

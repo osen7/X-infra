@@ -1,0 +1,59 @@
+# RBAC 配置：为 xctl-hub 提供 Kubernetes API 权限
+# 
+# 权限说明：
+# - nodes: get, list, patch (用于打污点和查询节点状态)
+# - pods: get, list, delete (用于查询和驱逐 Pod)
+# - pods/eviction: create (用于优雅驱逐 Pod，尊重 PDB)
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: xctl-hub-sa
+  namespace: xctl-system
+  labels:
+    app: xctl-hub
+    component: control-plane
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: xctl-hub-controller
+  labels:
+    app: xctl-hub
+    component: control-plane
+rules:
+  # Node 相关权限：查询和打污点
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+  
+  # Pod 相关权限：查询和驱逐
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  
+  # Pod Eviction 权限：优雅驱逐（尊重 PDB）
+  - apiGroups: ["policy"]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  
+  # 可选：如果需要查询 Pod 的详细信息（如 ownerReferences）
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: xctl-hub-controller-binding
+  labels:
+    app: xctl-hub
+    component: control-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: xctl-hub-controller
+subjects:
+  - kind: ServiceAccount
+    name: xctl-hub-sa
+    namespace: xctl-system

@@ -20,6 +20,8 @@ graph TB
         GlobalGraph[全局状态图<br/>GlobalGraph]
         HTTPAPI[HTTP API<br/>查询接口]
         ActionDispatch[动作下发<br/>反向通道]
+        K8sController[K8s 控制器<br/>自动隔离故障节点]
+        Metrics[Prometheus Metrics<br/>指标暴露]
     end
     
     subgraph "外部系统"
@@ -37,8 +39,11 @@ graph TB
     HubForwarder -->|WebSocket| WSServer
     WSServer -->|更新图| GlobalGraph
     GlobalGraph -->|查询| HTTPAPI
+    GlobalGraph -->|检测故障| K8sController
+    GlobalGraph -->|指标| Metrics
     HTTPAPI -->|返回结果| CLI
     ActionDispatch -->|下发命令| HubForwarder
+    K8sController -->|打污点/驱逐| K8s
     
     CLI -->|IPC 调用| IPC
     IPC -->|执行动作| Executor[执行引擎]
@@ -235,11 +240,68 @@ actions:
 - HTTP API 服务器（提供查询接口）
 - 全局状态图管理
 - 动作下发（反向通道）
+- Kubernetes 控制器（自动隔离故障节点）
+- Prometheus Metrics 暴露
 
 **API 端点**:
 - `GET /api/v1/ps`: 查询所有活跃进程
 - `GET /api/v1/why?job_id=xxx`: 全局根因分析
 - `POST /api/v1/fix`: 下发修复命令
+- `GET /metrics`: Prometheus Metrics 端点
+
+### 7. Kubernetes 控制器 (K8s Controller)
+
+**位置**: `hub/src/k8s_controller.rs`
+
+**职责**:
+- 检测不可逆硬件故障（持续 XID 错误、RDMA 链路断开等）
+- 自动给 Node 打上 NoSchedule 污点
+- 使用 Eviction API 优雅驱逐 Pod（尊重 PDB）
+
+**故障类型**:
+- `PersistentXidError`: GPU 持续 XID 错误
+- `RdmaLinkDown`: RDMA 物理链路断开
+- `StorageDeviceFailure`: 存储设备故障
+- `OtherHardwareFailure`: 其他不可逆硬件故障
+
+**安全机制**:
+- 冷却时间：5 分钟内不重复操作同一节点
+- RBAC 权限：最小权限原则，只授予必要的 K8s API 权限
+- 优雅驱逐：使用 Eviction API，尊重 PodDisruptionBudget
+
+### 8. Prometheus Metrics
+
+**位置**: `agent/src/metrics.rs`, `hub/src/metrics.rs`
+
+**职责**:
+- 暴露标准 Prometheus 格式指标
+- 提供基础指标（节点数、边数、事件处理数）
+- 提供详细指标（进程资源使用、等待时间、错误计数）
+
+**指标类型**:
+- `xctl_graph_nodes_total`: 图中节点总数（按类型）
+- `xctl_graph_edges_total`: 图中边总数（按类型）
+- `xctl_events_processed_total`: 已处理事件总数（按事件类型）
+- `xctl_process_resource_usage`: 进程资源使用（带标签）
+- `xctl_process_wait_time_seconds`: 进程等待时间（直方图）
+
+### 9. 审计日志 (Audit Log)
+
+**位置**: `agent/src/audit.rs`
+
+**职责**:
+- 记录所有 `xctl fix` 执行的系统级动作
+- 支持文件轮转（按大小，默认 100MB）
+- JSON 格式日志，满足企业合规要求
+
+**日志字段**:
+- `timestamp`: 时间戳（RFC3339 格式）
+- `user`: 执行用户
+- `action`: 动作类型
+- `target_pid`: 目标进程 PID
+- `target_job_id`: 目标任务 ID（可选）
+- `result`: 执行结果（success/partial_failure）
+- `details`: 详细信息
 
 ## 🔗 组件交互图
 
@@ -344,15 +406,27 @@ graph TB
     DS1 -->|WebSocket| SVC
     DS2 -->|WebSocket| SVC
     SVC --> DP
+    DP -->|K8s API| RBAC[RBAC<br/>ClusterRole<br/>ClusterRoleBinding]
+    DP -->|打污点/驱逐| K8s[Kubernetes API]
     
     EXT[外部 CLI] -->|HTTP| SVC
+    EXT -->|Prometheus| Metrics[/metrics]
 ```
 
 ### 资源隔离
 
-- **Hub**: 非 root 用户，严格资源限制（256Mi-512Mi）
+- **Hub**: 非 root 用户，严格资源限制（256Mi-512Mi），使用 `xctl-hub-sa` ServiceAccount
 - **Agent**: 特权模式，访问宿主机资源（hostPID/hostNetwork）
 - **IPC Socket**: 挂载到宿主机 `/var/run/xctl`
+
+### RBAC 权限
+
+- **ServiceAccount**: `xctl-hub-sa`（在 `xctl-system` 命名空间）
+- **ClusterRole**: `xctl-hub-controller`
+  - `nodes`: get, list, patch（打污点）
+  - `pods`: get, list, delete（查询和驱逐）
+  - `pods/eviction`: create（优雅驱逐，尊重 PDB）
+- **ClusterRoleBinding**: 将 ServiceAccount 绑定到 ClusterRole
 
 ## 🔐 安全设计
 
@@ -398,8 +472,9 @@ graph TB
 
 ### 集成扩展
 
-- Prometheus Exporter（计划中）
-- K8s 调度器集成（计划中）
+- ✅ **Prometheus Exporter**：Agent 和 Hub 都暴露 `/metrics` 端点，提供标准 Prometheus 格式指标
+- ✅ **K8s 调度器集成**：自动检测不可逆硬件故障，打 NoSchedule 污点，使用 Eviction API 优雅驱逐 Pod
+- ✅ **Audit Log**：完整记录所有系统干预动作，支持文件轮转，满足企业合规要求
 - 训练框架联动（计划中）
 
 ## 📚 相关文档

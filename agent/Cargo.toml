@@ -19,3 +19,6 @@ async-trait = { workspace = true }
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
 url = "2.5"
+prometheus = "0.13"
+warp = "0.3"
+chrono = { version = "0.4", features = ["serde"] }

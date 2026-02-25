@@ -17,6 +17,7 @@ spec:
         app: xctl-hub
         component: control-plane
     spec:
+      serviceAccountName: xctl-hub-sa
       containers:
       - name: xctl-hub
         image: xctl-hub:latest  # 替换为实际的镜像地址，如 registry.example.com/xctl-hub:v1.0.0
@@ -26,6 +27,7 @@ spec:
           - "0.0.0.0:8080"
           - "--http-listen"
           - "0.0.0.0:8081"
+          - "--enable-k8s-controller"
         ports:
         - name: websocket
           containerPort: 8080

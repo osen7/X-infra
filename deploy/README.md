@@ -42,14 +42,27 @@ kubectl logs -n xctl-system -l app=xctl-agent --tail=50
 
 ## 📋 组件说明
 
+### RBAC 配置
+
+**重要**: Hub 需要 Kubernetes API 权限才能执行节点隔离和 Pod 驱逐操作。
+
+- **ServiceAccount**: `xctl-hub-sa`（在 `xctl-system` 命名空间）
+- **ClusterRole**: `xctl-hub-controller`
+  - `nodes`: get, list, patch（打污点）
+  - `pods`: get, list, delete（查询和驱逐）
+  - `pods/eviction`: create（优雅驱逐，尊重 PDB）
+- **ClusterRoleBinding**: 将 ServiceAccount 绑定到 ClusterRole
+
 ### Hub Deployment
 
 - **服务类型**: ClusterIP（集群内部访问）
+- **ServiceAccount**: `xctl-hub-sa`（用于 K8s API 调用）
 - **端口**:
   - `8080`: WebSocket（Agent 连接）
   - `8081`: HTTP API（CLI 查询）
 - **资源限制**: 256Mi-512Mi 内存，100m-500m CPU
 - **健康检查**: HTTP GET `/api/v1/ps`
+- **K8s 控制器**: 默认启用（通过 `--enable-k8s-controller` 参数）
 
 ### Agent DaemonSet
 

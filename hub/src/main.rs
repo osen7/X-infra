@@ -14,6 +14,10 @@ use tokio::net::{TcpListener, TcpStream};
 use warp::Filter;
 use serde_json::json;
 use dashmap::DashMap;
+mod metrics;
+mod k8s_controller;
+use metrics::HubMetricsCollector;
+use k8s_controller::K8sController;
 
 #[derive(Parser)]
 #[command(name = "xctl-hub")]
@@ -25,6 +29,9 @@ struct Cli {
     /// HTTP API 监听地址
     #[arg(long, default_value = "0.0.0.0:8081")]
     http_listen: String,
+    /// 启用 Kubernetes 控制器（自动打污点和驱逐 Pod）
+    #[arg(long)]
+    enable_k8s_controller: bool,
 }
 
 #[tokio::main]
@@ -38,6 +45,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建全局状态图
     let global_graph = Arc::new(StateGraph::new());
     
+    // 创建 Metrics 收集器
+    let metrics = Arc::new(HubMetricsCollector::new()?);
+    
+    // 创建 K8s 控制器（如果启用）
+    let k8s_controller = if cli.enable_k8s_controller {
+        match K8sController::new(true).await {
+            Ok(controller) => {
+                println!("✅ Kubernetes 控制器已启用");
+                Some(Arc::new(controller))
+            }
+            Err(e) => {
+                eprintln!("⚠️  无法初始化 Kubernetes 控制器: {}", e);
+                eprintln!("   继续运行，但不会执行自动节点隔离操作");
+                None
+            }
+        }
+    } else {
+        println!("ℹ️  Kubernetes 控制器未启用（使用 --enable-k8s-controller 启用）");
+        None
+    };
+    
     // 创建 WebSocket 连接管理器（node_id -> sender）
     let connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>> = Arc::new(DashMap::new());
     
@@ -46,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ws_handle = {
         let graph = Arc::clone(&global_graph);
         let conns = Arc::clone(&connections);
+        let k8s_ctrl = k8s_controller.clone();
         tokio::spawn(async move {
             let listener = TcpListener::bind(&ws_listen).await?;
             println!("✅ WebSocket 服务器已启动，等待节点连接...");
@@ -53,8 +82,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Ok((stream, addr)) = listener.accept().await {
                 let graph = Arc::clone(&graph);
                 let conns = Arc::clone(&conns);
+                let k8s_ctrl = k8s_ctrl.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(stream, addr, graph, conns).await {
+                    if let Err(e) = handle_connection(stream, addr, graph, conns, k8s_ctrl).await {
                         eprintln!("[hub] 处理连接 {} 时出错: {}", addr, e);
                     }
                 });
@@ -64,15 +94,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
     
+    // 启动指标更新任务（每 5 秒更新一次）
+    let metrics_update_handle = {
+        let graph = Arc::clone(&global_graph);
+        let metrics = Arc::clone(&metrics);
+        let connections = Arc::clone(&connections);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                metrics.update_graph_metrics(&graph).await;
+                // 更新 WebSocket 连接数
+                let connected = connections.len();
+                metrics.update_websocket_connections(connected, 0);
+            }
+        })
+    };
+    
     // 启动 HTTP API 服务器
     let http_listen = cli.http_listen.clone();
     let http_handle = {
         let graph = Arc::clone(&global_graph);
         let conns = Arc::clone(&connections);
+        let metrics = Arc::clone(&metrics);
         tokio::spawn(async move {
-            let api = create_api_routes(graph, conns);
+            // 创建 API 路由（包含 metrics 端点）
+            let api = create_api_routes(graph, conns, metrics);
             println!("✅ HTTP API 服务器已启动");
-            warp::serve(api).run(([0, 0, 0, 0], http_listen.split(':').last().unwrap_or("8081").parse().unwrap_or(8081))).await;
+            let port = http_listen.split(':').last().unwrap_or("8081").parse().unwrap_or(8081);
+            println!("📊 Prometheus Metrics 端点: http://0.0.0.0:{}/metrics", port);
+            warp::serve(api).run(([0, 0, 0, 0], port)).await;
         })
     };
     
@@ -97,6 +148,7 @@ async fn handle_connection(
     addr: std::net::SocketAddr,
     graph: Arc<StateGraph>,
     connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
+    k8s_controller: Option<Arc<K8sController>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[hub] 新节点连接: {}", addr);
     
@@ -149,6 +201,19 @@ async fn handle_connection(
                             eprintln!("[hub] 处理事件失败: {}", e);
                         } else {
                             println!("[hub] 收到事件: {:?} from {}", event.event_type, node_id);
+                            
+                            // 检测不可逆故障并触发 K8s 操作
+                            if let Some(ref controller) = k8s_controller {
+                                if let Some(fault) = controller.detect_irreversible_fault(&event) {
+                                    // 在后台任务中处理故障（避免阻塞事件处理）
+                                    let controller_clone = Arc::clone(controller);
+                                    tokio::spawn(async move {
+                                        if let Err(e) = controller_clone.handle_irreversible_fault(&fault).await {
+                                            eprintln!("[k8s-controller] 处理故障失败: {}", e);
+                                        }
+                                    });
+                                }
+                            }
                         }
                     }
                     Err(e) => {
@@ -196,13 +261,43 @@ struct FixRequest {
     action: Option<String>, // 可选，默认 "GracefulShutdown"
 }
 
+/// Warp Filter：注入 Metrics 收集器
+fn with_metrics(
+    metrics: Arc<HubMetricsCollector>,
+) -> impl Filter<Extract = (Arc<HubMetricsCollector>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || metrics.clone())
+}
+
 /// 创建 HTTP API 路由
 fn create_api_routes(
     graph: Arc<StateGraph>,
     connections: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
+    metrics: Arc<HubMetricsCollector>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let graph_filter = with_graph(graph.clone());
     let conns_filter = with_connections(connections.clone());
+    let metrics_filter = with_metrics(metrics.clone());
+    
+    // GET /metrics - Prometheus Metrics 端点
+    let metrics_route = warp::path("metrics")
+        .and(warp::get())
+        .and(metrics_filter.clone())
+        .and_then(|metrics: Arc<HubMetricsCollector>| async move {
+            match metrics.gather() {
+                Ok(body) => Ok(warp::reply::with_header(
+                    body,
+                    "content-type",
+                    "text/plain; version=0.0.4",
+                )),
+                Err(e) => {
+                    eprintln!("[hub-metrics] 收集指标失败: {}", e);
+                    Ok(warp::reply::with_status(
+                        format!("Error: {}", e),
+                        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    ))
+                }
+            }
+        });
     
     // GET /api/v1/why?job_id=xxx
     let why_route = warp::path!("api" / "v1" / "why")
@@ -297,7 +392,7 @@ fn create_api_routes(
             }
         });
     
-    why_route.or(ps_route).or(fix_route)
+    metrics_route.or(why_route).or(ps_route).or(fix_route)
 }
 
 /// 集群级根因分析：根据 job_id 查找所有相关进程并分析根因

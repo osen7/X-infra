@@ -10,7 +10,7 @@ use aya_bpf::{
 };
 use aya_log_ebpf::info;
 
-use xctl_probe_ebpf_ebpf::{NetworkEvent, SocketTuple};
+use xctl_probe_ebpf_ebpf::{NetworkEvent, SocketTuple, StorageEvent, RdmaEvent};
 
 // 导入内核绑定（CO-RE 支持）
 // 注意：实际使用时，这些应该从 generate-bindings.sh 生成

@@ -8,6 +8,7 @@ namespace: xctl-system
 
 resources:
   - namespace.yaml
+  - rbac.yaml
   - hub-deployment.yaml
   - agent-daemonset.yaml
 

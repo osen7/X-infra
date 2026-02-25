@@ -4,6 +4,8 @@ mod ipc;
 mod diag;
 mod scene;
 mod hub_forwarder;
+mod metrics;
+mod audit;
 
 use clap::{Parser, Subcommand};
 use xctl_core::event::{Event, EventBus};
@@ -14,6 +16,7 @@ use exec::{SystemActuator, FixEngine};
 use diag::run_diagnosis;
 use scene::{SceneIdentifier, SceneType};
 use hub_forwarder::{HubForwarder, get_node_id};
+use metrics::MetricsCollector;
 use std::sync::Arc;
 use std::path::PathBuf;
 
@@ -99,6 +102,9 @@ enum Commands {
     Fix {
         /// 目标进程 PID
         pid: u32,
+        /// 审计日志文件路径（可选，如 /var/log/xctl/audit.log）
+        #[arg(long)]
+        audit_log: Option<PathBuf>,
         #[cfg(unix)]
         /// Unix Domain Socket 路径（默认: /var/run/xctl.sock 或 ~/.xctl/xctl.sock）
         #[arg(long)]
@@ -184,12 +190,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diagnose_process(pid, port, provider, rules_dir).await?;
         }
         #[cfg(unix)]
-        Commands::Fix { pid, socket_path, rules_dir, yes } => {
-            fix_process(pid, socket_path, rules_dir, yes).await?;
+        Commands::Fix { pid, socket_path, rules_dir, yes, audit_log } => {
+            fix_process(pid, socket_path, rules_dir, yes, audit_log).await?;
         }
         #[cfg(windows)]
-        Commands::Fix { pid, port, rules_dir, yes } => {
-            fix_process(pid, port, rules_dir, yes).await?;
+        Commands::Fix { pid, port, rules_dir, yes, audit_log } => {
+            fix_process(pid, port, rules_dir, yes, audit_log).await?;
         }
         Commands::Cluster { command, hub } => {
             match command {
@@ -224,6 +230,55 @@ async fn run_daemon(
 
     // 创建状态图
     let graph = Arc::new(StateGraph::new());
+    
+    // 创建 Metrics 收集器
+    let metrics = Arc::new(MetricsCollector::new()?);
+
+    // 启动 Prometheus Metrics HTTP 服务器
+    let metrics_server_handle = {
+        let metrics = Arc::clone(&metrics);
+        tokio::spawn(async move {
+            let routes = warp::path("metrics")
+                .and(warp::get())
+                .and_then(move || {
+                    let metrics = Arc::clone(&metrics);
+                    async move {
+                        match metrics.gather() {
+                            Ok(body) => Ok(warp::reply::with_header(
+                                body,
+                                "content-type",
+                                "text/plain; version=0.0.4",
+                            )),
+                            Err(e) => {
+                                eprintln!("[metrics] 收集指标失败: {}", e);
+                                Ok(warp::reply::with_status(
+                                    format!("Error: {}", e),
+                                    warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                ))
+                            }
+                        }
+                    }
+                });
+            
+            println!("[xctl] Prometheus Metrics 端点: http://0.0.0.0:9091/metrics");
+            warp::serve(routes)
+                .run(([0, 0, 0, 0], 9091))
+                .await;
+        })
+    };
+    
+    // 启动指标更新任务（每 5 秒更新一次）
+    let metrics_update_handle = {
+        let graph = Arc::clone(&graph);
+        let metrics = Arc::clone(&metrics);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                metrics.update_graph_metrics(&graph).await;
+            }
+        })
+    };
 
     // 启动探针
     let probe_handle = {
@@ -259,11 +314,15 @@ async fn run_daemon(
     // 启动事件消费和图形更新任务
     let graph_handle = {
         let graph = Arc::clone(&graph);
+        let metrics = Arc::clone(&metrics);
         let mut rx = bus.receiver();
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
                     Some(event) => {
+                        // 记录事件处理指标
+                        metrics.record_event(&event.event_type);
+                        
                         if let Err(e) = graph.process_event(&event).await {
                             eprintln!("[xctl] 处理事件失败: {}", e);
                         }
@@ -302,6 +361,8 @@ async fn run_daemon(
     probe_handle.abort();
     graph_handle.abort();
     ipc_handle.abort();
+    metrics_server_handle.abort();
+    metrics_update_handle.abort();
 
     // 清理 Socket 文件
     if socket_path.exists() {
@@ -809,6 +870,7 @@ async fn fix_process(
     socket_path: Option<PathBuf>,
     rules_dir: Option<PathBuf>,
     auto_yes: bool,
+    audit_log: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use colored::Colorize;
     
@@ -872,9 +934,52 @@ async fn fix_process(
         }
     }
     
+    // 初始化审计日志（如果指定了路径）
+    let audit_logger = if let Some(ref log_path) = audit_log {
+        Some(Arc::new(audit::AuditLogger::new(log_path.clone(), 100)?)) // 100MB 最大大小
+    } else {
+        None
+    };
+    
     // 执行修复
     let fix_engine = FixEngine::new();
     let result = fix_engine.fix_from_analysis(&analysis, pid).await?;
+    
+    // 记录审计日志
+    if let Some(ref logger) = audit_logger {
+        // 尝试从分析结果中获取 job_id（如果有）
+        let job_id = analysis.recommended_actions.iter()
+            .find(|a| a.contains("job"))
+            .and_then(|_| None); // 简化：暂时不提取 job_id
+        
+        let action_str = if !result.executed_actions.is_empty() {
+            result.executed_actions[0].action.clone()
+        } else if !analysis.recommended_actions.is_empty() {
+            analysis.recommended_actions[0].clone()
+        } else {
+            "Unknown".to_string()
+        };
+        
+        let details = format!(
+            "执行动作: {}; 成功: {}; 失败: {}; 场景: {:?}",
+            action_str,
+            result.executed_actions.len(),
+            result.failed_actions.len(),
+            analysis.scene
+        );
+        
+        let entry = audit::create_audit_entry(
+            &action_str,
+            pid,
+            None, // job_id 暂时为 None
+            if result.success { "success" } else { "partial_failure" },
+            &details,
+        );
+        
+        if let Err(e) = logger.log(entry).await {
+            eprintln!("[audit] 记录审计日志失败: {}", e);
+        }
+    }
     
     // 显示结果
     println!("\n{}", "=".repeat(70).bright_cyan());
@@ -941,9 +1046,47 @@ async fn fix_process(
     // 创建分析结果
     let analysis = create_analysis_from_causes(scene, &causes);
     
+    // 初始化审计日志（如果指定了路径）
+    let audit_logger = if let Some(ref log_path) = audit_log {
+        Some(Arc::new(audit::AuditLogger::new(log_path.clone(), 100)?)) // 100MB 最大大小
+    } else {
+        None
+    };
+    
     // 执行修复
     let fix_engine = FixEngine::new();
     let result = fix_engine.fix_from_analysis(&analysis, pid).await?;
+    
+    // 记录审计日志
+    if let Some(ref logger) = audit_logger {
+        let action_str = if !result.executed_actions.is_empty() {
+            result.executed_actions[0].action.clone()
+        } else if !analysis.recommended_actions.is_empty() {
+            analysis.recommended_actions[0].clone()
+        } else {
+            "Unknown".to_string()
+        };
+        
+        let details = format!(
+            "执行动作: {}; 成功: {}; 失败: {}; 场景: {:?}",
+            action_str,
+            result.executed_actions.len(),
+            result.failed_actions.len(),
+            analysis.scene
+        );
+        
+        let entry = audit::create_audit_entry(
+            &action_str,
+            pid,
+            None, // job_id 暂时为 None
+            if result.success { "success" } else { "partial_failure" },
+            &details,
+        );
+        
+        if let Err(e) = logger.log(entry).await {
+            eprintln!("[audit] 记录审计日志失败: {}", e);
+        }
+    }
     
     println!("修复结果: {}", result.message);
     

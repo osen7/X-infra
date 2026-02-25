@@ -39,6 +39,14 @@
   - 权限控制
   - 跨平台兼容
 
+### 5. 生产级集成
+- **[Kubernetes 部署](../deploy/README.md)** - 生产级 K8s 部署指南
+  - RBAC 权限配置
+  - DaemonSet/Deployment 配置
+  - K8s 控制器集成（自动隔离故障节点）
+  - Prometheus Metrics 集成
+  - Audit Log 配置
+
 ## 🎯 文档组织原则
 
 - **聚焦项目生命周期**：只保留与项目开发、使用、维护直接相关的文档
