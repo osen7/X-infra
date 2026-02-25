@@ -13,6 +13,7 @@
 - 🔍 **因果分析**：自动推导进程-资源-错误的因果关系
 - 💻 **极简 CLI**：类似 Docker 的 C/S 架构，轻量级客户端
 - 🛡️ **生产级**：内存安全、错误处理完善、OOM 防护
+- ☸️ **Kubernetes 原生**：DaemonSet + Deployment，一键部署到万卡集群
 
 ## 🚀 快速开始
 
@@ -35,13 +36,27 @@ cargo run -p xctl --release -- diag <PID>  # AI 诊断
 
 详细使用指南请查看 [README_USAGE.md](README_USAGE.md) 和 [QUICKSTART.md](QUICKSTART.md)。
 
+### ☸️ Kubernetes 部署（生产环境推荐）
+
+```bash
+# 一键部署到 Kubernetes 集群
+kubectl apply -k deploy/
+
+# 查看部署状态
+kubectl get pods -n xctl-system
+```
+
+详细部署指南请查看 [deploy/README.md](deploy/README.md)。
+
 ## 📖 文档
 
 - [使用指南](README_USAGE.md) - 完整的功能说明和使用示例
 - [快速开始](QUICKSTART.md) - 5 分钟上手指南
+- [Kubernetes 部署](deploy/README.md) - 生产级 K8s 部署指南
 - [项目路线图](docs/ROADMAP.md) - 开发计划和里程碑
 - [规则引擎](docs/RULES_ENGINE.md) - 声明式规则系统
 - [eBPF 网络探针](docs/EBPF_NETWORK_PROBE.md) - 内核级网络监控
+- [eBPF CO-RE 实现](xctl-probe-ebpf/CO-RE_IMPLEMENTATION.md) - CO-RE 四元组提取指南
 - [探针开发](examples/README.md) - 如何开发自定义探针
 
 ## 🏗️ 架构设计

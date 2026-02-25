@@ -1,0 +1,33 @@
+# Kustomization 配置：一键部署 xctl 到 Kubernetes 集群
+# 使用方法：kubectl apply -k deploy/
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: xctl-system
+
+resources:
+  - namespace.yaml
+  - hub-deployment.yaml
+  - agent-daemonset.yaml
+
+# 可选：通过 ConfigMap 提供规则和探针脚本
+# configMapGenerator:
+#   - name: xctl-rules
+#     files:
+#       - rules/gpu-oom.yaml
+#       - rules/network-stall.yaml
+#       - rules/workload-stalled.yaml
+#   - name: xctl-probes
+#     files:
+#       - examples/xctl-probe-nvml.py
+#       - examples/xctl-probe-network.py
+
+# 可选：镜像替换（用于不同环境）
+# images:
+#   - name: xctl-hub
+#     newName: registry.example.com/xctl-hub
+#     newTag: v1.0.0
+#   - name: xctl
+#     newName: registry.example.com/xctl
+#     newTag: v1.0.0

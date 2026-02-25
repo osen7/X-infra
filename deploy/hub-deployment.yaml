@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xctl-hub
+  namespace: xctl-system
+  labels:
+    app: xctl-hub
+    component: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: xctl-hub
+  template:
+    metadata:
+      labels:
+        app: xctl-hub
+        component: control-plane
+    spec:
+      containers:
+      - name: xctl-hub
+        image: xctl-hub:latest  # 替换为实际的镜像地址，如 registry.example.com/xctl-hub:v1.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+          - "--ws-listen"
+          - "0.0.0.0:8080"
+          - "--http-listen"
+          - "0.0.0.0:8081"
+        ports:
+        - name: websocket
+          containerPort: 8080
+          protocol: TCP
+        - name: http-api
+          containerPort: 8081
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/ps
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v1/ps
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        env:
+        - name: RUST_LOG
+          value: "info"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xctl-hub
+  namespace: xctl-system
+  labels:
+    app: xctl-hub
+    component: control-plane
+spec:
+  type: ClusterIP
+  ports:
+  - name: websocket
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: http-api
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  selector:
+    app: xctl-hub

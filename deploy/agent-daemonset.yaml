@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: xctl-agent
+  namespace: xctl-system
+  labels:
+    app: xctl-agent
+    component: data-plane
+spec:
+  selector:
+    matchLabels:
+      app: xctl-agent
+  template:
+    metadata:
+      labels:
+        app: xctl-agent
+        component: data-plane
+    spec:
+      # 必须使用 hostNetwork 和 hostPID 以访问宿主机进程和网络命名空间
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      # 需要特权模式以挂载 eBPF 程序和访问内核资源
+      containers:
+      - name: xctl-agent
+        image: xctl:latest  # 替换为实际的镜像地址，如 registry.example.com/xctl:v1.0.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+              - NET_ADMIN
+              - BPF
+              - SYS_RESOURCE
+        args:
+          - "run"
+          - "--hub-url"
+          - "ws://xctl-hub.xctl-system.svc.cluster.local:8080"
+          - "--probe"
+          - "/opt/xctl/probes/xctl-probe-nvml.py"
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        # 挂载规则目录（可选，如果使用 ConfigMap）
+        volumeMounts:
+        - name: rules
+          mountPath: /opt/xctl/rules
+          readOnly: true
+        - name: probes
+          mountPath: /opt/xctl/probes
+          readOnly: true
+        # 挂载 IPC socket 目录（Unix Domain Socket）
+        - name: ipc-socket
+          mountPath: /var/run/xctl
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        # 健康检查：检查进程是否运行
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "pgrep -f 'xctl run' > /dev/null"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "test -S /var/run/xctl/xctl.sock || pgrep -f 'xctl run' > /dev/null"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      # 规则文件（可选，通过 ConfigMap 提供）
+      - name: rules
+        configMap:
+          name: xctl-rules
+          optional: true
+      # 探针脚本（可选，通过 ConfigMap 提供）
+      - name: probes
+        configMap:
+          name: xctl-probes
+          optional: true
+      # IPC socket 目录（使用 hostPath 以便在宿主机上持久化）
+      - name: ipc-socket
+        hostPath:
+          path: /var/run/xctl
+          type: DirectoryOrCreate
+      # 容忍所有节点（包括 master）
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists

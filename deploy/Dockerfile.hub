@@ -1,0 +1,50 @@
+# Hub 专用 Dockerfile
+FROM rust:1.70-slim as builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.toml
+COPY core/Cargo.toml core/Cargo.toml
+COPY hub/Cargo.toml hub/Cargo.toml
+
+COPY core core
+COPY hub hub
+
+RUN cargo build --release -p xctl-hub
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非 root 用户
+RUN useradd -m -u 1000 xctl
+
+# 复制二进制文件
+COPY --from=builder /build/target/release/xctl-hub /opt/xctl/xctl-hub
+
+# 设置权限
+RUN chmod +x /opt/xctl/xctl-hub && \
+    chown -R xctl:xctl /opt/xctl
+
+WORKDIR /opt/xctl
+
+ENV PATH="/opt/xctl:${PATH}"
+
+# 暴露端口
+EXPOSE 8080 8081
+
+# 切换到非 root 用户
+USER xctl
+
+# 入口点
+ENTRYPOINT ["/opt/xctl/xctl-hub"]
+CMD ["--ws-listen", "0.0.0.0:8080", "--http-listen", "0.0.0.0:8081"]

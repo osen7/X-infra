@@ -212,9 +212,10 @@ fn create_api_routes(
             |params: std::collections::HashMap<String, String>, graph: Arc<StateGraph>| async move {
                 if let Some(job_id) = params.get("job_id") {
                     match cluster_why(graph, job_id).await {
-                        Ok(causes) => Ok(warp::reply::json(&json!({
+                        Ok((causes, processes)) => Ok(warp::reply::json(&json!({
                             "job_id": job_id,
-                            "causes": causes
+                            "causes": causes,
+                            "processes": processes
                         }))),
                         Err(e) => Ok(warp::reply::json(&json!({
                             "error": e.to_string()
@@ -303,7 +304,7 @@ fn create_api_routes(
 async fn cluster_why(
     graph: Arc<StateGraph>,
     target_job_id: &str,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<(Vec<String>, Vec<serde_json::Value>), Box<dyn std::error::Error>> {
     let nodes = graph.nodes.read().await;
     let mut global_causes = Vec::new();
     
@@ -320,13 +321,33 @@ async fn cluster_why(
     drop(nodes);
     
     if job_pids.is_empty() {
-        return Ok(vec![format!("未找到 job_id={} 的进程", target_job_id)]);
+        return Ok((vec![format!("未找到 job_id={} 的进程", target_job_id)], Vec::new()));
     }
     
-    // 2. 对每个进程节点，在全局图中发起根因分析
+    // 2. 构建进程列表（用于 CLI 提取节点和 PID）
+    let mut process_list = Vec::new();
+    
+    // 3. 对每个进程节点，在全局图中发起根因分析
     // 直接使用完整的节点 ID（包含命名空间），避免命名空间丢失
-    for pid_id in job_pids {
-        let causes = graph.find_root_cause_by_id(&pid_id).await;
+    for pid_id in &job_pids {
+        // 提取节点 ID 和 PID 并添加到进程列表
+        if pid_id.contains("::") {
+            let parts: Vec<&str> = pid_id.split("::").collect();
+            let node_id = parts[0].to_string();
+            if let Some(pid_part) = parts.get(1) {
+                if let Some(pid_str) = pid_part.strip_prefix("pid-") {
+                    if let Ok(pid) = pid_str.parse::<u32>() {
+                        process_list.push(json!({
+                            "node_id": node_id,
+                            "pid": pid,
+                            "node_id_full": pid_id
+                        }));
+                    }
+                }
+            }
+        }
+        
+        let causes = graph.find_root_cause_by_id(pid_id).await;
         for cause in causes {
             // 添加节点信息到根因描述中
             let node_info = if pid_id.contains("::") {
@@ -339,9 +360,9 @@ async fn cluster_why(
         }
     }
     
-    // 3. 去重并返回全局根因
+    // 4. 去重并返回全局根因和进程列表
     global_causes.sort();
     global_causes.dedup();
     
-    Ok(global_causes)
+    Ok((global_causes, process_list))
 }

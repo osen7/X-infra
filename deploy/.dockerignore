@@ -1,0 +1,18 @@
+# Docker 构建忽略文件
+target/
+.git/
+.gitignore
+*.md
+docs/
+examples/
+rules/
+deploy/
+*.yaml
+*.yml
+!deploy/*.yaml
+!deploy/*.yml
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

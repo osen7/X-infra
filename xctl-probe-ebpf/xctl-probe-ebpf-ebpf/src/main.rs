@@ -6,6 +6,7 @@ use aya_bpf::{
     macros::{kprobe, map},
     maps::{HashMap, PerfEventArray},
     programs::ProbeContext,
+    BpfContext,
 };
 use aya_log_ebpf::info;
 
@@ -72,35 +73,55 @@ fn try_tcp_sendmsg(ctx: ProbeContext) -> Result<u32, u32> {
 
 /// 从 tcp_sendmsg 的上下文提取 socket 四元组（CO-RE 版本）
 /// 
-/// 注意：这是一个简化实现，实际生产环境应该：
-/// 1. 使用 aya-tool 生成完整的内核绑定
-/// 2. 使用 bpf_core_read! 宏安全读取字段
-/// 3. 处理不同内核版本的字段差异
+/// 这是解决软中断 PID 陷阱的关键：在真实的进程上下文中建立 socket -> PID 映射
+/// 
+/// 实现细节：
+/// 1. 从 ctx.arg(0) 获取 struct sock *sk 指针
+/// 2. 使用 bpf_probe_read_kernel 安全读取内核结构体字段（CO-RE 兼容）
+/// 3. 只处理 IPv4 连接（skc_family == AF_INET，值为 2）
+/// 4. 所有 IP 和端口都是网络字节序（大端序）
 #[inline]
-fn extract_socket_tuple_from_sendmsg(_ctx: ProbeContext, _pid: u32) -> SocketTuple {
-    // TODO: 实现完整的 CO-RE socket 提取
-    // 
-    // 完整实现应该：
-    // 1. 从 ctx 获取 struct sock *sk 指针
-    // 2. 使用 bpf_core_read! 读取 sk->__sk_common.skc_rcv_saddr
-    // 3. 使用 bpf_core_read! 读取 sk->__sk_common.skc_daddr
-    // 4. 使用 bpf_core_read! 读取 sk->__sk_common.skc_num (源端口)
-    // 5. 使用 bpf_core_read! 读取 sk->__sk_common.skc_dport (目的端口)
-    //
-    // 示例代码（需要完整的内核绑定）：
-    // let sk: *const bindings::sock = ctx.arg(0)?;
-    // let saddr = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_rcv_saddr) };
-    // let daddr = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_daddr) };
-    // let sport = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_num) };
-    // let dport = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_dport) };
-    
-    // 当前返回空值，等待完整实现
-    SocketTuple {
+fn extract_socket_tuple_from_sendmsg(ctx: ProbeContext, _pid: u32) -> SocketTuple {
+    // 默认返回值（提取失败时返回）
+    let mut tuple = SocketTuple {
         src_ip: 0,
         dst_ip: 0,
         src_port: 0,
         dst_port: 0,
+    };
+    
+    // 步骤 1：从函数参数获取 struct sock *sk 指针
+    // tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
+    // 第一个参数（索引 0）是 sk
+    let sk_ptr: *const bindings::sock = match ctx.arg(0) {
+        Ok(ptr) => ptr as *const bindings::sock,
+        Err(_) => return tuple, // 无法获取 sk 指针，返回空值
+    };
+    
+    // 步骤 2：读取 sock_common 部分（包含网络信息）
+    // 使用 bpf_probe_read_kernel 进行 CO-RE 兼容的读取
+    let sk_common = unsafe {
+        let mut common = core::mem::zeroed::<bindings::sock_common>();
+        let common_ptr = &(*sk_ptr).__sk_common as *const bindings::sock_common;
+        if bpf_probe_read_kernel(common_ptr as *const _, &mut common as *mut _ as *mut u8, core::mem::size_of::<bindings::sock_common>()).is_err() {
+            return tuple; // 读取失败，返回空值
+        }
+        common
+    };
+    
+    // 步骤 3：只处理 IPv4 连接（AF_INET = 2）
+    // 跳过 IPv6 和其他协议族
+    if sk_common.skc_family != 2 {
+        return tuple; // 不是 IPv4，返回空值
     }
+    
+    // 步骤 4：提取四元组（所有值都是网络字节序）
+    tuple.src_ip = sk_common.skc_rcv_saddr;      // 源 IP（网络字节序）
+    tuple.dst_ip = sk_common.skc_daddr;           // 目的 IP（网络字节序）
+    tuple.src_port = sk_common.skc_num;          // 源端口（网络字节序）
+    tuple.dst_port = sk_common.skc_dport;        // 目的端口（网络字节序）
+    
+    tuple
 }
 
 /// Hook tcp_retransmit_skb：在软中断上下文中捕获重传
@@ -188,35 +209,55 @@ fn try_tcp_retransmit_skb(ctx: ProbeContext) -> Result<u32, u32> {
 
 /// 从 tcp_retransmit_skb 的上下文提取 socket 四元组（CO-RE 版本）
 /// 
-/// 注意：这是一个简化实现，实际生产环境应该：
-/// 1. 使用 aya-tool 生成完整的内核绑定
-/// 2. 使用 bpf_core_read! 宏安全读取字段
-/// 3. 处理不同内核版本的字段差异
+/// 这是解决软中断 PID 陷阱的关键：通过 socket 四元组从 Map 中反查真实 PID
+/// 
+/// 实现细节：
+/// 1. 从 ctx.arg(0) 获取 struct sock *sk 指针
+/// 2. 使用 bpf_probe_read_kernel 安全读取内核结构体字段（CO-RE 兼容）
+/// 3. 只处理 IPv4 连接（skc_family == AF_INET，值为 2）
+/// 4. 所有 IP 和端口都是网络字节序（大端序）
 #[inline]
-fn extract_socket_tuple_from_retransmit(_ctx: ProbeContext, _fallback_pid: u32) -> SocketTuple {
-    // TODO: 实现完整的 CO-RE socket 提取
-    // 
-    // 完整实现应该：
-    // 1. 从 ctx 获取 struct sock *sk 指针
-    // 2. 使用 bpf_core_read! 读取 sk->__sk_common.skc_rcv_saddr
-    // 3. 使用 bpf_core_read! 读取 sk->__sk_common.skc_daddr
-    // 4. 使用 bpf_core_read! 读取 sk->__sk_common.skc_num (源端口)
-    // 5. 使用 bpf_core_read! 读取 sk->__sk_common.skc_dport (目的端口)
-    //
-    // 示例代码（需要完整的内核绑定）：
-    // let sk: *const bindings::sock = ctx.arg(0)?;
-    // let saddr = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_rcv_saddr) };
-    // let daddr = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_daddr) };
-    // let sport = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_num) };
-    // let dport = unsafe { bpf_core_read!(&(*sk).__sk_common.skc_dport) };
-    
-    // 当前返回空值，等待完整实现
-    SocketTuple {
+fn extract_socket_tuple_from_retransmit(ctx: ProbeContext, _fallback_pid: u32) -> SocketTuple {
+    // 默认返回值（提取失败时返回）
+    let mut tuple = SocketTuple {
         src_ip: 0,
         dst_ip: 0,
         src_port: 0,
         dst_port: 0,
+    };
+    
+    // 步骤 1：从函数参数获取 struct sock *sk 指针
+    // tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb, int segs)
+    // 第一个参数（索引 0）是 sk
+    let sk_ptr: *const bindings::sock = match ctx.arg(0) {
+        Ok(ptr) => ptr as *const bindings::sock,
+        Err(_) => return tuple, // 无法获取 sk 指针，返回空值
+    };
+    
+    // 步骤 2：读取 sock_common 部分（包含网络信息）
+    // 使用 bpf_probe_read_kernel 进行 CO-RE 兼容的读取
+    let sk_common = unsafe {
+        let mut common = core::mem::zeroed::<bindings::sock_common>();
+        let common_ptr = &(*sk_ptr).__sk_common as *const bindings::sock_common;
+        if bpf_probe_read_kernel(common_ptr as *const _, &mut common as *mut _ as *mut u8, core::mem::size_of::<bindings::sock_common>()).is_err() {
+            return tuple; // 读取失败，返回空值
+        }
+        common
+    };
+    
+    // 步骤 3：只处理 IPv4 连接（AF_INET = 2）
+    // 跳过 IPv6 和其他协议族
+    if sk_common.skc_family != 2 {
+        return tuple; // 不是 IPv4，返回空值
     }
+    
+    // 步骤 4：提取四元组（所有值都是网络字节序）
+    tuple.src_ip = sk_common.skc_rcv_saddr;      // 源 IP（网络字节序）
+    tuple.dst_ip = sk_common.skc_daddr;           // 目的 IP（网络字节序）
+    tuple.src_port = sk_common.skc_num;          // 源端口（网络字节序）
+    tuple.dst_port = sk_common.skc_dport;        // 目的端口（网络字节序）
+    
+    tuple
 }
 
 

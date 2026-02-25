@@ -1,0 +1,61 @@
+# Agent 专用 Dockerfile（包含探针脚本和规则）
+FROM rust:1.70-slim as builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.toml
+COPY core/Cargo.toml core/Cargo.toml
+COPY agent/Cargo.toml agent/Cargo.toml
+
+COPY core core
+COPY agent agent
+
+RUN cargo build --release -p xctl
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非 root 用户（但允许在特权模式下运行）
+RUN useradd -m -u 1000 xctl
+
+# 复制二进制文件
+COPY --from=builder /build/target/release/xctl /opt/xctl/xctl
+
+# 复制探针脚本（可选，也可以通过 ConfigMap 挂载）
+COPY examples/xctl-probe-nvml.py /opt/xctl/probes/
+COPY examples/xctl-probe-network.py /opt/xctl/probes/
+COPY examples/xctl-probe-dummy.py /opt/xctl/probes/
+
+# 复制规则文件（可选，也可以通过 ConfigMap 挂载）
+COPY rules /opt/xctl/rules
+
+# 设置权限
+RUN chmod +x /opt/xctl/xctl && \
+    chmod +x /opt/xctl/probes/*.py && \
+    chown -R xctl:xctl /opt/xctl
+
+# 创建 IPC socket 目录
+RUN mkdir -p /var/run/xctl && \
+    chown -R xctl:xctl /var/run/xctl
+
+# 注意：在 Kubernetes 中，Agent 需要以特权模式运行
+# 因此这里不切换到非 root 用户，而是让 Kubernetes 的 securityContext 控制
+WORKDIR /opt/xctl
+
+ENV PATH="/opt/xctl:${PATH}"
+
+# 默认命令（可以通过 Kubernetes args 覆盖）
+ENTRYPOINT ["/opt/xctl/xctl"]
+CMD ["run"]

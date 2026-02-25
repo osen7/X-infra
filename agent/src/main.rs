@@ -133,6 +133,14 @@ enum ClusterCommands {
         /// 目标 job_id
         job_id: String,
     },
+    /// 修复集群中某个 job 的问题（自动诊断并下发修复命令）
+    Fix {
+        /// 目标 job_id
+        job_id: String,
+        /// 是否自动确认（跳过交互式确认）
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
@@ -190,6 +198,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 ClusterCommands::Why { job_id } => {
                     cluster_why(&hub, &job_id).await?;
+                }
+                ClusterCommands::Fix { job_id, yes } => {
+                    cluster_fix(&hub, &job_id, yes).await?;
                 }
             }
         }
@@ -1067,4 +1078,187 @@ async fn cluster_why(hub_url: &str, job_id: &str) -> Result<(), Box<dyn std::err
     }
     
     Ok(())
+}
+
+/// 集群级修复：自动诊断并下发修复命令
+async fn cluster_fix(hub_url: &str, job_id: &str, auto_confirm: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use colored::*;
+    use std::io::{self, Write};
+    
+    println!("🔧 集群级修复：job_id = {}", job_id.bright_green());
+    println!();
+    
+    // 步骤 1：调用 why 接口获取根因和涉及的节点/PID
+    let url = format!("{}/api/v1/why?job_id={}", hub_url.trim_end_matches('/'), job_id);
+    let response = reqwest::get(&url).await?;
+    let json: serde_json::Value = response.json().await?;
+    
+    if let Some(error) = json.get("error") {
+        eprintln!("错误: {}", error.as_str().unwrap_or("unknown"));
+        return Ok(());
+    }
+    
+    // 步骤 2：显示根因
+    if let Some(causes) = json.get("causes").and_then(|c| c.as_array()) {
+        if causes.is_empty() {
+            println!("未发现阻塞根因，无需修复");
+            return Ok(());
+        }
+        
+        println!("发现的根因：");
+        for (i, cause) in causes.iter().enumerate() {
+            if let Some(cause_str) = cause.as_str() {
+                println!("  {}. {}", i + 1, cause_str.bright_red());
+            }
+        }
+    }
+    
+    // 步骤 3：从进程列表中提取节点和 PID
+    let mut target_nodes: Vec<(String, u32)> = Vec::new(); // (node_id, pid)
+    
+    if let Some(processes) = json.get("processes").and_then(|p| p.as_array()) {
+        for process in processes {
+            if let (Some(node_id), Some(pid)) = (
+                process.get("node_id").and_then(|n| n.as_str()),
+                process.get("pid").and_then(|p| p.as_u64())
+            ) {
+                target_nodes.push((node_id.to_string(), pid as u32));
+            }
+        }
+    }
+    
+    // 如果进程列表为空，尝试从根因字符串中解析（向后兼容）
+    if target_nodes.is_empty() {
+        if let Some(causes) = json.get("causes").and_then(|c| c.as_array()) {
+            for cause in causes {
+                if let Some(cause_str) = cause.as_str() {
+                    if let Some((node_id, pid)) = extract_node_and_pid(cause_str) {
+                        target_nodes.push((node_id, pid));
+                    }
+                }
+            }
+        }
+    }
+    
+    if target_nodes.is_empty() {
+        println!("⚠️  无法从响应中提取节点和 PID 信息，请手动指定");
+        return Ok(());
+    }
+    
+    // 步骤 4：显示将要执行的操作并确认
+    println!();
+    println!("将执行以下修复操作：");
+    for (node_id, pid) in &target_nodes {
+        println!("  • 节点 {} 上的 PID {}: 优雅降级 (GracefulShutdown)", 
+            node_id.bright_cyan(), pid.to_string().bright_yellow());
+    }
+    println!();
+    
+    // 步骤 5：用户确认
+    if !auto_confirm {
+        print!("是否确认执行？[y/N]: ");
+        io::stdout().flush()?;
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        
+        if input.trim().to_lowercase() != "y" {
+            println!("已取消");
+            return Ok(());
+        }
+    }
+    
+    // 步骤 6：调用 fix API 下发命令
+    println!();
+    println!("正在下发修复命令...");
+    
+    let client = reqwest::Client::new();
+    let mut success_count = 0;
+    let mut fail_count = 0;
+    
+    for (node_id, pid) in target_nodes {
+        let fix_url = format!("{}/api/v1/fix", hub_url.trim_end_matches('/'));
+        let fix_request = serde_json::json!({
+            "node_id": node_id,
+            "target_pid": pid,
+            "action": "GracefulShutdown"
+        });
+        
+        match client.post(&fix_url)
+            .json(&fix_request)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    println!("  ✅ 节点 {} PID {}: 命令已发送", 
+                        node_id.bright_cyan(), pid.to_string().bright_yellow());
+                    success_count += 1;
+                } else {
+                    let error_text = response.text().await.unwrap_or_default();
+                    eprintln!("  ❌ 节点 {} PID {}: 发送失败 - {}", 
+                        node_id.bright_red(), pid.to_string().bright_yellow(), error_text);
+                    fail_count += 1;
+                }
+            }
+            Err(e) => {
+                eprintln!("  ❌ 节点 {} PID {}: 请求失败 - {}", 
+                    node_id.bright_red(), pid.to_string().bright_yellow(), e);
+                fail_count += 1;
+            }
+        }
+    }
+    
+    println!();
+    if success_count > 0 {
+        println!("✅ 成功发送 {} 个修复命令", success_count.to_string().bright_green());
+    }
+    if fail_count > 0 {
+        println!("❌ 失败 {} 个命令", fail_count.to_string().bright_red());
+    }
+    
+    Ok(())
+}
+
+/// 从根因字符串中提取节点 ID 和 PID
+/// 支持格式：
+/// - "node-a: pid-1234 WaitsOn network"
+/// - "node-a::pid-1234: ..."
+/// - "node-a::pid-1234 WaitsOn ..."
+fn extract_node_and_pid(cause_str: &str) -> Option<(String, u32)> {
+    // 尝试匹配 "node-xxx::pid-yyy" 格式
+    if let Some(pos) = cause_str.find("::pid-") {
+        let node_part = &cause_str[..pos];
+        if let Some(pid_start) = cause_str[pos + 6..].find(|c: char| c.is_ascii_digit()) {
+            let pid_str = &cause_str[pos + 6 + pid_start..];
+            let pid_end = pid_str.find(|c: char| !c.is_ascii_digit()).unwrap_or(pid_str.len());
+            if let Ok(pid) = pid_str[..pid_end].parse::<u32>() {
+                return Some((node_part.to_string(), pid));
+            }
+        }
+    }
+    
+    // 尝试匹配 "node-xxx: pid-yyy" 格式（单冒号）
+    if let Some(node_end) = cause_str.find(": pid-") {
+        let node_part = cause_str[..node_end].trim();
+        let pid_start = node_end + 6;
+        let pid_str = &cause_str[pid_start..];
+        let pid_end = pid_str.find(|c: char| !c.is_ascii_digit()).unwrap_or(pid_str.len());
+        if let Ok(pid) = pid_str[..pid_end].parse::<u32>() {
+            return Some((node_part.to_string(), pid));
+        }
+    }
+    
+    // 尝试匹配 "node-xxx pid-yyy" 格式（空格分隔）
+    if let Some(node_end) = cause_str.find(" pid-") {
+        let node_part = cause_str[..node_end].trim();
+        let pid_start = node_end + 5;
+        let pid_str = &cause_str[pid_start..];
+        let pid_end = pid_str.find(|c: char| !c.is_ascii_digit()).unwrap_or(pid_str.len());
+        if let Ok(pid) = pid_str[..pid_end].parse::<u32>() {
+            return Some((node_part.to_string(), pid));
+        }
+    }
+    
+    None
 }
