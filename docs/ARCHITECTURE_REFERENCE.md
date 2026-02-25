@@ -14,39 +14,25 @@
 
 ## 🎯 核心参考点
 
-### 1. 知识库系统（最高优先级）
+### 1. 规则引擎（声明式知识库）⭐ 已修正
 
-**当前问题**：
-- `xctl diag` 每次都要调用大模型，成本高
-- 无法沉淀历史经验
-- 相同问题重复分析
+**架构师预警**：❌ 不要引入 SQLite，会破坏 Daemon 的 stateless 和极简原则。
 
-**参考方案**：
-```rust
-// 建议在 src/knowledge/ 模块实现
-pub struct KnowledgeBase {
-    // 知识类型：solution/case/pattern/rule
-    knowledge_type: KnowledgeType,
-    // 适用场景（如：gpu_oom, network_stall）
-    scene: String,
-    // 根因模式（JSON）
-    root_cause_pattern: serde_json::Value,
-    // 解决步骤（JSON）
-    solution_steps: Vec<SolutionStep>,
-    // 成功率
-    success_rate: f64,
-    // 使用次数
-    usage_count: u64,
-    // 关联证据类型
-    related_evidences: Vec<String>,
-}
-```
+**修正方案**：使用声明式 YAML/TOML 规则文件。
+
+**设计**：
+- 规则文件放在 `rules/` 目录（如 `rules/gpu-oom.yaml`）
+- Daemon 启动时加载规则到内存
+- 无数据库依赖，无 I/O 开销
+- 易于版本控制和协作
 
 **实施建议**：
-1. 在 `diag.rs` 中增加知识库匹配逻辑
-2. 优先从知识库查询，未命中再调用大模型
-3. 诊断完成后自动沉淀到知识库
-4. 支持知识库的增删改查
+1. 实现 YAML 规则文件格式
+2. 实现规则匹配引擎（内存匹配）
+3. 在 `diag.rs` 中优先匹配规则，未命中再调用大模型
+4. 复杂场景的知识库匹配放在 CLI 端，调用远端向量数据库
+
+详见 [RULES_ENGINE.md](RULES_ENGINE.md)
 
 ### 2. 场景化分析（高优先级）
 
@@ -124,46 +110,30 @@ pub struct SolutionVerification {
 2. 新增 `xctl verify <plan_id>` 命令：验证修复效果
 3. 自动定期复查，检测问题是否复发
 
-### 4. 量化指标系统（中优先级）
+### 4. Prometheus Exporter（指标导出）⭐ 已修正
 
-**当前问题**：
-- 无法评估诊断质量
-- 无法追踪系统改进效果
+**架构师预警**：❌ 不要造轮子，不要成为 Prometheus 的劣质替代品。
 
-**参考方案**：
-```rust
-// 建议在 src/metrics/ 模块实现
-pub struct AnalysisMetrics {
-    metric_date: chrono::NaiveDate,
-    metric_type: MetricType,  // quality/efficiency/effectiveness
-    metric_name: String,
-    metric_value: f64,
-    metric_metadata: serde_json::Value,
-}
+**修正方案**：实现 Prometheus Exporter，标准化导出指标。
 
-// 核心指标
-pub enum MetricType {
-    // 分析质量
-    RootCauseAccuracy,      // 根因识别准确率
-    ConfidenceDistribution,  // 置信度分布
-    EvidenceCompleteness,    // 证据完整性
-    
-    // 处理效果
-    ProblemResolutionRate,   // 问题解决率
-    AvgResolutionTime,       // 平均解决时间
-    RecurrenceRate,          // 复发率
-    
-    // 系统效率
-    AnalysisLatency,         // 分析耗时
-    AutomationRate,          // 自动化率
-    KnowledgeHitRate,        // 知识库命中率
-}
-```
+**设计**：
+- xctl 暴露 `/metrics` 端点（Prometheus 格式）
+- 只导出事件和因果关系相关指标
+- 不存储历史数据，不生成报表
+- 报表交给 Grafana，xctl 只负责实时流
+
+**导出的指标**：
+- 事件计数（按类型）
+- 因果关系指标（WaitsOn/BlockedBy/Consumes 边数量）
+- 诊断指标（诊断次数、延迟、场景分布）
+- 图状态指标（活跃进程数、资源数、错误节点数）
 
 **实施建议**：
-1. 在每次诊断后收集指标
-2. 新增 `xctl metrics` 命令：查看指标统计
-3. 支持导出报表（JSON/CSV）
+1. 使用 `prometheus` crate 实现指标导出
+2. 新增 `--metrics-port` 参数（可选，默认不启用）
+3. 与现有 Prometheus 生态无缝集成
+
+详见 [METRICS_EXPORT.md](METRICS_EXPORT.md)
 
 ### 5. 多源数据集成（低优先级，但很有价值）
 
@@ -179,81 +149,106 @@ pub enum MetricType {
 
 ## 🚀 实施路线图
 
-### Phase 1: 知识库系统（4周）
+### Phase 1: eBPF 网络探针（最高优先级，4-6周）
 
-**Week 1-2: 数据模型和存储**
-- 设计知识库数据模型
-- 实现 SQLite 存储（轻量级，符合 KISS 原则）
-- 实现 CRUD 接口
+**Week 1-2: eBPF 程序开发**
+- 编写 eBPF 程序（监控 TCP/RDMA 重传和延迟）
+- 使用 BCC 或 Rust Aya 框架
+- 测试 eBPF 程序在内核中的运行
 
-**Week 3: 知识匹配引擎**
-- 实现特征提取（从诊断结果提取根因模式）
-- 实现相似度计算算法
-- 实现知识查询和排序
+**Week 3-4: 用户空间程序**
+- 实现 eBPF map 读取
+- 事件转换为 xctl Event 格式
+- 集成到 SubprocessProbe 或直接集成
 
-**Week 4: 集成到诊断流程**
-- 修改 `diag.rs`，优先查询知识库
-- 实现知识自动沉淀
+**Week 5-6: 测试和优化**
+- 性能测试
+- 稳定性测试
+- 文档完善
+
+### Phase 2: 规则引擎（3周）
+
+**Week 1: 规则文件格式**
+- 设计 YAML 规则文件格式
+- 实现规则解析器
+
+**Week 2: 规则匹配引擎**
+- 实现条件匹配逻辑
+- 实现规则优先级排序
+
+**Week 3: 集成到诊断流程**
+- 修改 `diag.rs`，优先匹配规则
+- 未命中再调用大模型
 - 测试和优化
 
-### Phase 2: 场景化分析（3周）
+### Phase 3: 场景化分析（2周）
 
-**Week 5-6: 核心场景实现**
+**Week 1: 核心场景实现**
 - 实现 GPU OOM 场景分析器
 - 实现网络阻塞场景分析器
 - 实现进程崩溃场景分析器
 
-**Week 7: 场景自动识别**
+**Week 2: 场景自动识别**
 - 实现场景识别逻辑
 - 集成到 `xctl why` 命令
 - 测试和优化
 
-### Phase 3: 处理追踪（2周）
+### Phase 4: 处理追踪（2周）
 
-**Week 8: 方案生成和执行**
+**Week 1: 方案生成和执行**
 - 实现 `SolutionPlan` 数据模型
 - 新增 `xctl fix` 命令
 - 实现方案执行记录
 
-**Week 9: 效果验证**
+**Week 2: 效果验证**
 - 实现自动验证逻辑
 - 实现定期复查机制
 - 新增 `xctl verify` 命令
 
-### Phase 4: 量化指标（2周）
+### Phase 5: Prometheus Exporter（1周）
 
-**Week 10: 指标收集**
-- 实现指标数据模型
-- 在关键节点收集指标
-- 实现指标存储
-
-**Week 11: 报表生成**
-- 实现 `xctl metrics` 命令
-- 实现报表导出功能
-- 测试和优化
+**Week 1: 指标导出**
+- 实现 Prometheus 指标导出
+- 添加 `--metrics-port` 参数
+- 与 Grafana 集成测试
 
 ## 💡 关键技术点
 
-### 1. 知识匹配算法
+### 1. eBPF 网络探针实现
+
+```c
+// network_probe.bpf.c
+SEC("kprobe/tcp_retransmit_skb")
+int trace_tcp_retransmit(struct pt_regs *ctx) {
+    struct network_event event = {};
+    event.pid = bpf_get_current_pid_tgid() >> 32;
+    event.event_type = NETWORK_RETRANSMIT;
+    event.timestamp = bpf_ktime_get_ns();
+    
+    bpf_ringbuf_output(&events, &event, sizeof(event), 0);
+    return 0;
+}
+```
+
+### 2. 规则匹配算法
 
 ```rust
-// 相似度计算
-fn calculate_similarity(
-    root_cause_pattern: &Value,
-    evidence_types: &[String],
-    conditions: &Value,
-    knowledge: &KnowledgeBase,
-) -> f64 {
-    let root_cause_score = match_root_cause_pattern(root_cause_pattern, &knowledge.root_cause_pattern) * 0.5;
-    let evidence_score = match_evidence_types(evidence_types, &knowledge.related_evidences) * 0.3;
-    let condition_score = match_conditions(conditions, &knowledge.applicability_conditions) * 0.2;
-    
-    root_cause_score + evidence_score + condition_score
-}
-
-// 综合评分
-fn calculate_composite_score(similarity: f64, knowledge: &KnowledgeBase) -> f64 {
-    similarity + knowledge.success_rate * 0.3 + (knowledge.usage_count as f64).log10() * 0.2
+// 规则条件匹配
+fn match_rule(rule: &Rule, events: &[Event], graph: &StateGraph) -> bool {
+    rule.conditions.iter().all(|condition| {
+        match condition {
+            Condition::Event { event_type, value_pattern, .. } => {
+                events.iter().any(|e| {
+                    e.event_type.to_string() == *event_type &&
+                    value_pattern.as_ref().map_or(true, |p| e.value.contains(p))
+                })
+            }
+            Condition::Graph { edge_type, .. } => {
+                // 检查图中是否存在指定类型的边
+                graph.has_edge_type(edge_type)
+            }
+        }
+    })
 }
 ```
 
@@ -304,33 +299,34 @@ async fn verify_solution(plan_id: &str) -> VerificationResult {
 }
 ```
 
-## 📈 预期收益
+## 📈 预期收益（修正版）
 
 ### 短期收益（1-2个月）
 
-1. **成本降低**：知识库命中率 30%+，减少大模型调用
-2. **准确率提升**：场景化分析，根因识别准确率提升 20%+
-3. **效率提升**：自动化率提升，平均诊断时间减少 40%+
+1. **核心能力**：eBPF 探针实现，xctl 具备真正的降维打击能力
+2. **成本降低**：规则引擎命中率 30%+，减少大模型调用
+3. **准确率提升**：场景化分析，根因识别准确率提升 20%+
 
 ### 长期收益（3-6个月）
 
-1. **知识沉淀**：形成可复用的知识库，减少重复分析
+1. **知识沉淀**：规则文件形成可复用的知识库
 2. **闭环管理**：追踪处理效果，验证根治情况
-3. **数据化支撑**：量化指标支撑汇报，趋势分析支持决策
+3. **生态集成**：与 Prometheus/Grafana 无缝集成
 
-## 🔄 架构演进建议
+## 🔄 架构演进建议（修正版）
 
 ### 保持 xctl 的核心优势
 
-1. **KISS 原则**：知识库使用 SQLite，不引入复杂中间件
-2. **事件驱动**：保持事件流架构，知识库作为增强层
-3. **探针解耦**：保持探针独立性，不污染核心
+1. **KISS 原则**：规则引擎使用 YAML 文件，不引入数据库
+2. **Stateless**：Daemon 保持无状态，重启后重新加载规则
+3. **事件驱动**：保持事件流架构，规则引擎作为增强层
+4. **探针解耦**：保持探针独立性，不污染核心
 
 ### 渐进式演进
 
-1. **Phase 1**：先实现知识库，验证效果
-2. **Phase 2**：再实现场景化分析，提升精准度
-3. **Phase 3**：最后实现追踪和指标，形成闭环
+1. **Phase 1**：**eBPF 网络探针**（最高优先级，核心护城河）
+2. **Phase 2**：规则引擎和场景化分析
+3. **Phase 3**：处理追踪和 Prometheus Exporter
 
 ## 📝 总结
 
