@@ -1,0 +1,5 @@
+# xctl 探针依赖
+# 安装: pip install -r requirements.txt
+
+# NVIDIA GPU 监控
+pynvml>=11.5.0
