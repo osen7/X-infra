@@ -51,11 +51,18 @@ impl SceneAnalyzer for ProcessCrashAnalyzer {
         recommendations.push("检查资源使用情况（内存、CPU）".to_string());
         recommendations.push("检查依赖服务状态".to_string());
 
+        let mut recommended_actions = Vec::new();
+        recommended_actions.push("检查 Checkpoint 文件是否完整".to_string());
+        recommended_actions.push("如果支持，尝试从 Checkpoint 恢复训练".to_string());
+        recommended_actions.push("修复根因后重新提交任务".to_string());
+
         AnalysisResult {
             scene: SceneType::ProcessCrash,
             root_causes,
             confidence: 0.75,
             recommendations,
+            recommended_actions,
+            severity: crate::scene::types::Severity::Critical,
         }
     }
 }

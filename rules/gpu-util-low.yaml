@@ -1,0 +1,74 @@
+name: "GPU 利用率低场景"
+scene: "gpu_util_low"
+priority: 80
+
+# 场景特征（匹配条件）
+conditions:
+  all:
+    # 进程状态为 running
+    - type: "metric"
+      node_type: "process"
+      metrics:
+        - key: "state"
+          op: "eq"
+          target: "running"
+          value_type: "string"
+    
+    # 消耗 GPU 资源
+    - type: "graph"
+      edge_type: "consumes"
+      from_pattern: "pid-*"
+      to_pattern: "gpu-*|npu-*"
+    
+    # GPU 利用率 < 10%
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "gpu-*|npu-*"
+      metrics:
+        - key: "util"
+          op: "lt"
+          target: "10"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "GPU/NPU 利用率极低"
+  secondary:
+    - "数据加载成为瓶颈"
+    - "训练循环阻塞"
+    - "网络同步等待"
+    - "进程死锁"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 GPU/NPU 利用率"
+    command: "nvidia-smi 或 ascend-toolkit 查看实时利用率"
+    manual: false
+  
+  - step: 2
+    action: "检查数据加载速度"
+    command: "监控 DataLoader 的吞吐量"
+    manual: false
+  
+  - step: 3
+    action: "检查是否有 WaitsOn 网络或存储"
+    command: "xctl why <pid>"
+    manual: false
+  
+  - step: 4
+    action: "优化数据加载管道"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "compute.util"
+  - "transport.bw"
+  - "storage.iops"
+  - "process.state"
+
+# 适用条件
+applicability:
+  min_confidence: 0.75
+  required_events:
+    - "compute.util"

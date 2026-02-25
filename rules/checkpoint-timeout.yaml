@@ -1,0 +1,79 @@
+name: "Checkpoint 超时场景"
+scene: "checkpoint_timeout"
+priority: 85
+
+# 场景特征（匹配条件）
+conditions:
+  all:
+    # 进程状态包含 checkpoint 相关
+    - type: "metric"
+      node_type: "process"
+      metrics:
+        - key: "state"
+          op: "contains"
+          target: "checkpoint|saving|loading"
+          value_type: "string"
+    
+    # 等待存储资源
+    - type: "graph"
+      edge_type: "waits_on"
+      from_pattern: "pid-*"
+      to_pattern: "storage-*|disk-*"
+    
+    # 存储 IOPS < 50（Checkpoint 需要高 IOPS）
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "storage-*|disk-*"
+      metrics:
+        - key: "iops"
+          op: "lt"
+          target: "50"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "Checkpoint 操作因存储性能问题而超时"
+  secondary:
+    - "存储 IOPS 不足"
+    - "Checkpoint 文件过大"
+    - "存储设备性能下降"
+    - "多任务同时保存 Checkpoint"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 Checkpoint 文件大小"
+    command: "du -sh <checkpoint_dir>"
+    manual: false
+  
+  - step: 2
+    action: "检查存储 IOPS"
+    command: "iostat -x 1 5"
+    manual: false
+  
+  - step: 3
+    action: "检查 Checkpoint 目录磁盘空间"
+    command: "df -h <checkpoint_dir>"
+    manual: false
+  
+  - step: 4
+    action: "尝试触发 Checkpoint Dump 信号"
+    command: "kill -SIGUSR1 <pid>"
+    manual: false
+  
+  - step: 5
+    action: "优化 Checkpoint 策略（异步保存、增量保存）"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "storage.iops"
+  - "storage.qdepth"
+  - "process.state"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "storage.iops"
+    - "process.state"

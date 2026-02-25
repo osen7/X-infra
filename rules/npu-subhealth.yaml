@@ -1,0 +1,76 @@
+name: "NPU 亚健康降级场景"
+scene: "npu_subhealth"
+priority: 95
+
+# 场景特征（匹配条件）
+conditions:
+  any:
+    # SOC 过温
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "npu-*"
+      metrics:
+        - key: "temperature"
+          op: "gt"
+          target: "85"
+          value_type: "numeric"
+    
+    # HCCS 降级
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "npu-*"
+      metrics:
+        - key: "hccs_lane_status"
+          op: "eq"
+          target: "degraded"
+          value_type: "string"
+    
+    # 频率降频（低于最大频率的 90%）
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "npu-*"
+      metrics:
+        - key: "frequency_ratio"
+          op: "lt"
+          target: "0.9"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "NPU 处于亚健康状态"
+  secondary:
+    - "SOC 过温导致性能降频"
+    - "HCCS 链路降级"
+    - "硬件老化或散热不良"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 NPU 温度"
+    command: "cat /sys/class/ascend_drv/ascend*/device/temperature"
+    manual: false
+  
+  - step: 2
+    action: "检查 HCCS 链路状态"
+    command: "hccn_tool -i 0 -link -g"
+    manual: false
+  
+  - step: 3
+    action: "检查机器散热和风扇状态"
+    manual: true
+  
+  - step: 4
+    action: "隔离亚健康节点，避免新任务调度"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "compute.util"
+  - "error.hw"
+  - "topo.link_down"
+
+# 适用条件
+applicability:
+  min_confidence: 0.75
+  required_events:
+    - "compute.util"

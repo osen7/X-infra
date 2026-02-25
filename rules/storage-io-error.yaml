@@ -1,0 +1,69 @@
+name: "存储 IO 错误场景"
+scene: "storage_io_error"
+priority: 90
+
+# 场景特征（匹配条件）
+conditions:
+  any:
+    # 存储设备错误
+    - type: "event"
+      event_type: "error.hw"
+      entity_id_pattern: "storage-*|disk-*|nvme-*"
+      value_pattern: "io_error|IO error|EIO"
+    
+    # 图边显示存储阻塞
+    - type: "graph"
+      edge_type: "blocked_by"
+      to_pattern: "storage-*|disk-*|nvme-*"
+    
+    # 存储节点 metadata 中有错误
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "storage-*|disk-*|nvme-*"
+      metrics:
+        - key: "io_error"
+          op: "ne"
+          target: "0"
+          value_type: "string"
+
+# 根因模式
+root_cause_pattern:
+  primary: "存储设备 IO 错误"
+  secondary:
+    - "磁盘硬件故障"
+    - "文件系统损坏"
+    - "存储设备过热"
+    - "存储驱动问题"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查系统日志中的存储错误"
+    command: "dmesg | grep -i 'error\\|fail' | tail -20"
+    manual: false
+  
+  - step: 2
+    action: "检查文件系统错误"
+    command: "fsck -n <device>"
+    manual: false
+  
+  - step: 3
+    action: "检查存储设备 SMART 状态"
+    command: "smartctl -a <device>"
+    manual: false
+  
+  - step: 4
+    action: "如果可能，迁移数据到其他存储"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "error.hw"
+  - "storage.iops"
+  - "storage.qdepth"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "error.hw"

@@ -1,6 +1,6 @@
 use crate::event::Event;
-use crate::graph::{EdgeType, StateGraph};
-use crate::rules::rule::Condition;
+use crate::graph::{EdgeType, NodeType, StateGraph};
+use crate::rules::rule::{ComparisonOp, Condition, MetricCondition, ValueType};
 
 /// 规则匹配器
 pub struct RuleMatcher;
@@ -39,14 +39,19 @@ impl RuleMatcher {
                         }
                     }
 
-                    // 匹配值阈值
+                    // 匹配值阈值（改进：更安全的数值解析）
                     if let Some(threshold) = value_threshold {
-                        if let Ok(value) = event.value.parse::<f64>() {
-                            if value < *threshold {
+                        match event.value.parse::<f64>() {
+                            Ok(value) => {
+                                if value < *threshold {
+                                    return false;
+                                }
+                            }
+                            Err(_) => {
+                                // 如果无法解析为数值，且阈值存在，则不匹配
+                                // 这避免了将 "D" (Disk Sleep) 误解析为 0.0
                                 return false;
                             }
-                        } else {
-                            return false;
                         }
                     }
 
@@ -90,6 +95,58 @@ impl RuleMatcher {
                     true
                 })
             }
+            Condition::Metric {
+                node_type,
+                entity_id_pattern,
+                metrics,
+            } => {
+                // 获取所有节点
+                let nodes = graph.get_nodes_async().await;
+                
+                nodes.values().any(|node| {
+                    // 匹配节点类型
+                    if let Some(ref nt) = node_type {
+                        let node_type_str = match node.node_type {
+                            NodeType::Process => "process",
+                            NodeType::Resource => "resource",
+                            NodeType::Error => "error",
+                        };
+                        if node_type_str != nt.as_str() {
+                            return false;
+                        }
+                    }
+                    
+                    // 匹配实体 ID 模式
+                    if let Some(ref pattern) = entity_id_pattern {
+                        if !matches_pattern(&node.id, pattern) {
+                            return false;
+                        }
+                    }
+                    
+                    // 匹配所有指标条件
+                    metrics.iter().all(|metric| {
+                        match_metric_condition(metric, &node.metadata)
+                    })
+                })
+            }
+            Condition::Any { conditions } => {
+                // OR 逻辑：任意一个条件满足即可
+                for condition in conditions {
+                    if Self::match_condition(condition, events, graph).await {
+                        return true;
+                    }
+                }
+                false
+            }
+            Condition::All { conditions } => {
+                // AND 逻辑：所有条件都必须满足
+                for condition in conditions {
+                    if !Self::match_condition(condition, events, graph).await {
+                        return false;
+                    }
+                }
+                true
+            }
         }
     }
 
@@ -105,6 +162,71 @@ impl RuleMatcher {
             }
         }
         true
+    }
+}
+
+/// 匹配指标条件（支持数值和字符串比较）
+fn match_metric_condition(metric: &MetricCondition, metadata: &std::collections::HashMap<String, String>) -> bool {
+    let actual_str = match metadata.get(&metric.key) {
+        Some(v) => v,
+        None => return false,
+    };
+    
+    match metric.value_type {
+        ValueType::Numeric => {
+            // 数值比较
+            let actual_val = match actual_str.parse::<f64>() {
+                Ok(v) => v,
+                Err(_) => return false, // 无法解析为数值，不匹配
+            };
+            
+            let target_val = match metric.target.parse::<f64>() {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
+            
+            match metric.op {
+                ComparisonOp::Gt => actual_val > target_val,
+                ComparisonOp::Lt => actual_val < target_val,
+                ComparisonOp::Eq => (actual_val - target_val).abs() < 0.001, // 浮点数比较
+                ComparisonOp::Gte => actual_val >= target_val,
+                ComparisonOp::Lte => actual_val <= target_val,
+                ComparisonOp::Ne => (actual_val - target_val).abs() >= 0.001,
+                ComparisonOp::Contains => actual_str.contains(&metric.target),
+            }
+        }
+        ValueType::String => {
+            // 字符串比较
+            match metric.op {
+                ComparisonOp::Eq => actual_str == metric.target,
+                ComparisonOp::Ne => actual_str != metric.target,
+                ComparisonOp::Contains => actual_str.contains(&metric.target),
+                _ => false, // 其他操作符对字符串无效
+            }
+        }
+        ValueType::Auto => {
+            // 自动检测：先尝试数值，失败则用字符串
+            if let (Ok(actual_val), Ok(target_val)) = (actual_str.parse::<f64>(), metric.target.parse::<f64>()) {
+                // 数值比较
+                match metric.op {
+                    ComparisonOp::Gt => actual_val > target_val,
+                    ComparisonOp::Lt => actual_val < target_val,
+                    ComparisonOp::Eq => (actual_val - target_val).abs() < 0.001,
+                    ComparisonOp::Gte => actual_val >= target_val,
+                    ComparisonOp::Lte => actual_val <= target_val,
+                    ComparisonOp::Ne => (actual_val - target_val).abs() >= 0.001,
+                    ComparisonOp::Contains => actual_str.contains(&metric.target),
+                }
+            } else {
+                // 字符串比较
+                match metric.op {
+                    ComparisonOp::Eq => actual_str == metric.target,
+                    ComparisonOp::Ne => actual_str != metric.target,
+                    ComparisonOp::Contains => actual_str.contains(&metric.target),
+                    _ => false,
+                }
+            }
+        }
     }
 }
 

@@ -14,6 +14,42 @@ pub struct Rule {
     pub applicability: Applicability,
 }
 
+/// 值比较操作符
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ComparisonOp {
+    Gt,   // 大于
+    Lt,   // 小于
+    Eq,   // 等于
+    Gte,  // 大于等于
+    Lte,  // 小于等于
+    Ne,   // 不等于
+    Contains, // 包含（字符串）
+}
+
+/// 值类型
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ValueType {
+    Numeric,  // 数值类型
+    String,   // 字符串类型
+    Auto,     // 自动检测
+}
+
+/// 指标条件（用于节点 metadata 匹配）
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MetricCondition {
+    pub key: String,
+    pub op: ComparisonOp,
+    pub target: String,
+    #[serde(default = "default_value_type")]
+    pub value_type: ValueType,
+}
+
+fn default_value_type() -> ValueType {
+    ValueType::Auto
+}
+
 /// 规则条件
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
@@ -32,6 +68,23 @@ pub enum Condition {
         edge_type: String,
         from_pattern: Option<String>,
         to_pattern: Option<String>,
+    },
+    /// 节点指标条件（新增：支持 metadata 匹配）
+    #[serde(rename = "metric")]
+    Metric {
+        node_type: Option<String>,  // Process, Resource, Error
+        entity_id_pattern: Option<String>,
+        metrics: Vec<MetricCondition>,
+    },
+    /// 任意条件（OR 逻辑）
+    #[serde(rename = "any")]
+    Any {
+        conditions: Vec<Condition>,
+    },
+    /// 所有条件（AND 逻辑）
+    #[serde(rename = "all")]
+    All {
+        conditions: Vec<Condition>,
     },
 }
 

@@ -60,11 +60,19 @@ impl SceneAnalyzer for GpuOomAnalyzer {
         recommendations.push("考虑降低批处理大小或模型精度".to_string());
         recommendations.push("检查是否有显存泄漏".to_string());
 
+        // 推荐的操作（为 xctl fix 铺路）
+        let mut recommended_actions = Vec::new();
+        recommended_actions.push("尝试触发框架层的 Checkpoint Dump 信号 (SIGUSR1)".to_string());
+        recommended_actions.push("隔离该节点，执行 xctl zap 清理僵尸进程".to_string());
+        recommended_actions.push("修改批量大小 (Batch Size) 后重提任务".to_string());
+
         AnalysisResult {
             scene: SceneType::GpuOom,
             root_causes,
             confidence: if root_causes.len() > 1 { 0.9 } else { 0.7 },
             recommendations,
+            recommended_actions,
+            severity: crate::scene::types::Severity::Critical,
         }
     }
 }

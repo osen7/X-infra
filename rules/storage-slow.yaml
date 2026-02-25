@@ -1,0 +1,64 @@
+name: "存储慢速场景"
+scene: "storage_slow"
+priority: 75
+
+# 场景特征（匹配条件）
+conditions:
+  all:
+    # 进程等待存储
+    - type: "graph"
+      edge_type: "waits_on"
+      from_pattern: "pid-*"
+      to_pattern: "storage-*|disk-*|nvme-*"
+    
+    # 存储 IOPS < 100 或延迟 > 100ms
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "storage-*|disk-*|nvme-*"
+      metrics:
+        - key: "iops"
+          op: "lt"
+          target: "100"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "存储性能成为瓶颈"
+  secondary:
+    - "存储设备性能不足"
+    - "存储设备过热降频"
+    - "多进程竞争存储资源"
+    - "存储队列深度过高"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查存储 IOPS 和延迟"
+    command: "iostat -x 1 5"
+    manual: false
+  
+  - step: 2
+    action: "检查是否有其他进程竞争存储"
+    command: "iotop -o"
+    manual: false
+  
+  - step: 3
+    action: "检查存储设备温度"
+    command: "smartctl -a <device> | grep Temperature"
+    manual: false
+  
+  - step: 4
+    action: "优化数据加载策略（预取、缓存）"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "storage.iops"
+  - "storage.qdepth"
+  - "transport.bw"
+
+# 适用条件
+applicability:
+  min_confidence: 0.7
+  required_events:
+    - "storage.iops"

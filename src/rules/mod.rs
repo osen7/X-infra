@@ -161,7 +161,9 @@ fn matches_pattern(text: &str, pattern: &str) -> bool {
     } else {
         text == pattern
     }
+}
 
+impl RuleEngine {
     /// 获取规则数量
     pub fn rule_count(&self) -> usize {
         self.rules.len()

@@ -1,0 +1,77 @@
+name: "数据加载 IO 错误场景"
+scene: "dataloader_io_error"
+priority: 85
+
+# 场景特征（匹配条件）
+conditions:
+  all:
+    # 进程等待存储
+    - type: "graph"
+      edge_type: "waits_on"
+      from_pattern: "pid-*"
+      to_pattern: "storage-*|disk-*"
+    
+    # 存储 IO 错误
+    - type: "event"
+      event_type: "error.hw"
+      entity_id_pattern: "storage-*|disk-*"
+      value_pattern: "io_error|EIO|read error|write error"
+    
+    # GPU 利用率低（因为数据加载失败）
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "gpu-*|npu-*"
+      metrics:
+        - key: "util"
+          op: "lt"
+          target: "5"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "数据加载 IO 错误导致训练停滞"
+  secondary:
+    - "存储设备故障"
+    - "数据文件损坏"
+    - "存储权限问题"
+    - "网络存储连接中断"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查数据文件完整性"
+    command: "ls -lh <data_dir> && md5sum <data_file>"
+    manual: false
+  
+  - step: 2
+    action: "检查存储设备错误日志"
+    command: "dmesg | grep -i 'error\\|fail' | tail -20"
+    manual: false
+  
+  - step: 3
+    action: "检查数据目录权限"
+    command: "ls -ld <data_dir>"
+    manual: false
+  
+  - step: 4
+    action: "如果使用网络存储，检查网络连接"
+    command: "ping <storage_host>"
+    manual: false
+  
+  - step: 5
+    action: "尝试从备份恢复数据或重新下载"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "error.hw"
+  - "storage.iops"
+  - "compute.util"
+  - "transport.bw"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "error.hw"
+    - "storage.iops"

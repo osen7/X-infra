@@ -1,0 +1,57 @@
+name: "RoCE 网络拥塞场景"
+scene: "roce_congestion"
+priority: 85
+
+# 场景特征（匹配条件）
+conditions:
+  all:
+    # 网络丢包率 > 10%
+    - type: "event"
+      event_type: "transport.drop"
+      value_threshold: 10.0
+    
+    # 跨节点网络（RoCE）
+    - type: "graph"
+      edge_type: "waits_on"
+      from_pattern: "pid-*"
+      to_pattern: "roce-*|eth*"
+
+# 根因模式
+root_cause_pattern:
+  primary: "跨节点 RoCE 网络拥塞"
+  secondary:
+    - "PFC 风暴"
+    - "交换机配置问题"
+    - "网络带宽不足"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 RoCE 网络丢包统计"
+    command: "ethtool -S <interface> | grep -i drop"
+    manual: false
+  
+  - step: 2
+    action: "检查交换机 PFC 配置"
+    manual: true
+  
+  - step: 3
+    action: "检查网络带宽使用"
+    command: "iftop -t -s 10 -i <interface>"
+    manual: false
+  
+  - step: 4
+    action: "联系网络管理员检查交换机状态"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "transport.drop"
+  - "transport.bw"
+  - "error.net"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "transport.drop"

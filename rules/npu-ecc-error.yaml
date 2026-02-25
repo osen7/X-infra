@@ -1,0 +1,67 @@
+name: "NPU ECC 错误场景"
+scene: "npu_ecc_error"
+priority: 100
+
+# 场景特征（匹配条件）
+conditions:
+  any:
+    # ECC 错误事件
+    - type: "event"
+      event_type: "error.hw"
+      entity_id_pattern: "npu-*"
+      value_pattern: "ECC|ecc|memory error|内存错误"
+    
+    # NPU 资源节点 metadata 中有 ECC 错误计数
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "npu-*"
+      metrics:
+        - key: "ecc_error_count"
+          op: "gt"
+          target: "0"
+          value_type: "numeric"
+
+# 根因模式
+root_cause_pattern:
+  primary: "NPU ECC 内存错误"
+  secondary:
+    - "NPU 内存硬件故障"
+    - "NPU 固件问题"
+    - "NPU 过热导致内存不稳定"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 NPU ECC 错误计数"
+    command: "cat /sys/class/ascend_drv/ascend*/device/ecc_error_count"
+    manual: false
+  
+  - step: 2
+    action: "检查 NPU 温度"
+    command: "cat /sys/class/ascend_drv/ascend*/device/temperature"
+    manual: false
+  
+  - step: 3
+    action: "检查 NPU 固件版本"
+    command: "npu-smi info"
+    manual: false
+  
+  - step: 4
+    action: "隔离该 NPU，避免新任务调度"
+    manual: true
+  
+  - step: 5
+    action: "联系硬件维护团队检查 NPU 硬件"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "error.hw"
+  - "compute.util"
+  - "compute.mem"
+
+# 适用条件
+applicability:
+  min_confidence: 0.9
+  required_events:
+    - "error.hw"

@@ -1,0 +1,68 @@
+name: "HCCS 链路错误场景"
+scene: "hccs_error"
+priority: 85
+
+# 场景特征（匹配条件）
+conditions:
+  any:
+    # HCCS 链路错误
+    - type: "event"
+      event_type: "error.net"
+      entity_id_pattern: "hccs-*"
+      value_pattern: "error|failed|down"
+    
+    # HCCS 链路降级
+    - type: "metric"
+      node_type: "resource"
+      entity_id_pattern: "hccs-*"
+      metrics:
+        - key: "lane_status"
+          op: "eq"
+          target: "degraded"
+          value_type: "string"
+    
+    # 图边显示 HCCS 阻塞
+    - type: "graph"
+      edge_type: "blocked_by"
+      to_pattern: "hccs-*"
+
+# 根因模式
+root_cause_pattern:
+  primary: "HCCS 链路异常"
+  secondary:
+    - "同超节点内通信失败"
+    - "HCCS 硬件故障"
+    - "HCCS 驱动问题"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查 HCCS 链路状态"
+    command: "hccn_tool -i 0 -link -g"
+    manual: false
+  
+  - step: 2
+    action: "检查 HCCS 错误计数"
+    command: "hccn_tool -i 0 -link -e"
+    manual: false
+  
+  - step: 3
+    action: "重启 HCCS 驱动（如果安全）"
+    command: "systemctl restart ascend_drv"
+    manual: true
+  
+  - step: 4
+    action: "联系硬件维护团队"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "error.net"
+  - "topo.link_down"
+  - "transport.bw"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "error.net"

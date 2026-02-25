@@ -60,11 +60,17 @@ impl SceneAnalyzer for NetworkStallAnalyzer {
         recommendations.push("检查网络丢包统计".to_string());
         recommendations.push("检查 RDMA 连接状态（如果使用）".to_string());
 
+        let mut recommended_actions = Vec::new();
+        recommended_actions.push("检查交换机 PFC 配置".to_string());
+        recommended_actions.push("检查 RoCE/HCCS 连接状态".to_string());
+
         AnalysisResult {
             scene: SceneType::NetworkStall,
             root_causes,
             confidence: if network_wait_count > 0 { 0.85 } else { 0.6 },
             recommendations,
+            recommended_actions,
+            severity: crate::scene::types::Severity::Warning,
         }
     }
 }

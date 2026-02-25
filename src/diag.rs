@@ -382,7 +382,7 @@ fn extract_virtual_events_from_causes(
     let mut events = Vec::new();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()  // 如果系统时间异常，使用默认值 0
         .as_millis() as u64;
 
     // 从根因中提取错误事件

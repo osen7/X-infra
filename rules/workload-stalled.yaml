@@ -1,0 +1,70 @@
+name: "工作负载智能卡死检测"
+scene: "workload_stalled"
+priority: 90
+
+# 场景特征（匹配条件）
+# 智能判断：进程 running，但所有资源利用率 < 1%，且没有等待 IO
+conditions:
+  all:
+    # 进程状态为 running
+    - type: "metric"
+      node_type: "process"
+      metrics:
+        - key: "state"
+          op: "eq"
+          target: "running"
+          value_type: "string"
+    
+    # 所有消耗的资源利用率都 < 1%
+    - type: "graph"
+      edge_type: "consumes"
+      from_pattern: "pid-*"
+    
+    # 没有 WaitsOn 网络或存储
+    - type: "graph"
+      edge_type: "waits_on"
+      from_pattern: "pid-*"
+      to_pattern: "network-*|storage-*"
+
+# 根因模式
+root_cause_pattern:
+  primary: "进程死锁或卡死"
+  secondary:
+    - "资源利用率极低但进程未退出"
+    - "可能等待锁或信号量"
+    - "可能等待其他进程响应"
+
+# 解决步骤
+solution_steps:
+  - step: 1
+    action: "检查进程是否在等待锁"
+    command: "strace -p <pid> 2>&1 | grep -i 'futex|sem_wait'"
+    manual: false
+  
+  - step: 2
+    action: "检查进程线程状态"
+    command: "ps -T -p <pid>"
+    manual: false
+  
+  - step: 3
+    action: "如果确认卡死，执行清理"
+    command: "xctl zap <pid>"
+    manual: false
+  
+  - step: 4
+    action: "检查是否有 Checkpoint 可以恢复"
+    manual: true
+
+# 证据类型
+related_evidences:
+  - "process.state"
+  - "compute.util"
+  - "transport.bw"
+  - "storage.iops"
+
+# 适用条件
+applicability:
+  min_confidence: 0.8
+  required_events:
+    - "process.state"
+    - "compute.util"
