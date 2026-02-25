@@ -72,7 +72,7 @@ applicability:
 ### 规则引擎实现
 
 ```rust
-// src/rules/mod.rs
+// core/src/rules/mod.rs
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -198,7 +198,7 @@ impl RuleEngine {
 ### 2. 在诊断中使用
 
 ```rust
-// src/diag.rs
+// agent/src/diag.rs
 
 pub async fn run_diagnosis_with_rules(
     pid: u32,

@@ -42,11 +42,17 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // 加载 kprobe 程序
+    // 1. tcp_retransmit_skb：捕获 TCP 重传事件
     let program: &mut KProbe = bpf.program_mut("tcp_retransmit_skb").unwrap().try_into()?;
     program.load()?;
     program.attach("tcp_retransmit_skb", 0)?;
-
     info!("eBPF 程序已加载并附加到 tcp_retransmit_skb");
+
+    // 2. tcp_sendmsg：建立 socket -> PID 映射
+    let program2: &mut KProbe = bpf.program_mut("tcp_sendmsg").unwrap().try_into()?;
+    program2.load()?;
+    program2.attach("tcp_sendmsg", 0)?;
+    info!("eBPF 程序已加载并附加到 tcp_sendmsg");
 
     // 获取 PerfEventArray
     let mut perf_array = bpf.take_map("NETWORK_EVENTS").unwrap();
@@ -118,11 +124,26 @@ fn parse_network_event(buf: &BytesMut) -> Result<NetworkEvent, anyhow::Error> {
 fn output_event(event: &NetworkEvent, format: &str) {
     match format {
         "jsonl" => {
+            // 构建 entity_id：优先使用 socket 四元组，否则使用 PID
+            let entity_id = if event.socket_tuple.src_ip != 0 || event.socket_tuple.dst_ip != 0 {
+                // 有 socket 信息，使用四元组构建 entity_id
+                format!(
+                    "network-{}-{}-{}-{}",
+                    u32_to_ip_string(event.socket_tuple.src_ip),
+                    u32_to_ip_string(event.socket_tuple.dst_ip),
+                    u16::from_be(event.socket_tuple.src_port),
+                    u16::from_be(event.socket_tuple.dst_port)
+                )
+            } else {
+                // 没有 socket 信息，使用 PID（第一版）
+                format!("network-pid-{}", event.pid)
+            };
+            
             // 输出标准 xctl 事件格式
             let json_event = serde_json::json!({
                 "ts": event.timestamp / 1_000_000, // 转换为毫秒
                 "event_type": "transport.drop",
-                "entity_id": format!("network-pid-{}", event.pid),
+                "entity_id": entity_id,
                 "pid": event.pid,
                 "value": event.retransmit_count.to_string(),
             });
@@ -130,13 +151,41 @@ fn output_event(event: &NetworkEvent, format: &str) {
             println!("{}", serde_json::to_string(&json_event).unwrap());
         }
         "debug" => {
-            info!(
-                "TCP Retransmit: pid={}, count={}, ts={}",
-                event.pid, event.retransmit_count, event.timestamp
-            );
+            if event.socket_tuple.src_ip != 0 || event.socket_tuple.dst_ip != 0 {
+                info!(
+                    "TCP Retransmit: pid={}, socket={}:{}->{}:{}, count={}, ts={}",
+                    event.pid,
+                    u32_to_ip_string(event.socket_tuple.src_ip),
+                    u16::from_be(event.socket_tuple.src_port),
+                    u32_to_ip_string(event.socket_tuple.dst_ip),
+                    u16::from_be(event.socket_tuple.dst_port),
+                    event.retransmit_count,
+                    event.timestamp
+                );
+            } else {
+                info!(
+                    "TCP Retransmit: pid={}, count={}, ts={} (第一版：无 socket 信息)",
+                    event.pid, event.retransmit_count, event.timestamp
+                );
+            }
         }
         _ => {
             warn!("未知的输出格式: {}", format);
         }
+    }
+}
+
+/// 将 u32 IP 地址转换为点分十进制字符串
+fn u32_to_ip_string(ip: u32) -> String {
+    if ip == 0 {
+        "0.0.0.0".to_string()
+    } else {
+        format!(
+            "{}.{}.{}.{}",
+            (ip >> 24) & 0xFF,
+            (ip >> 16) & 0xFF,
+            (ip >> 8) & 0xFF,
+            ip & 0xFF
+        )
     }
 }

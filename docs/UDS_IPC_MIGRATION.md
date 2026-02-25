@@ -14,7 +14,7 @@
 
 ## 📋 实现细节
 
-### 1. IPC 服务器改造 (`src/ipc.rs`)
+### 1. IPC 服务器改造 (`agent/src/ipc.rs`)
 
 #### Unix 平台
 - 使用 `tokio::net::UnixListener` 和 `UnixStream`
@@ -29,13 +29,13 @@
 - 默认端口：9090
 - 完全向后兼容
 
-### 2. IPC 客户端改造 (`src/ipc.rs`)
+### 2. IPC 客户端改造 (`agent/src/ipc.rs`)
 
 - Unix：`IpcClient::new(Option<PathBuf>)` - 可选 Socket 路径
 - Windows：`IpcClient::new(u16)` - 端口号
 - 自动使用默认路径（Unix）或默认端口（Windows）
 
-### 3. CLI 参数更新 (`src/main.rs`)
+### 3. CLI 参数更新 (`agent/src/main.rs`)
 
 #### Unix 平台
 ```bash

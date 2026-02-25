@@ -15,11 +15,7 @@
   - 内核级网络监控
   - TCP 重传捕获
   - 零侵入监控
-
-- **[EBPF_PID_TRAP_FIX.md](EBPF_PID_TRAP_FIX.md)** - eBPF PID 陷阱修复
-  - 软中断上下文问题
-  - Socket 映射解决方案
-  - 技术实现细节
+  - PID 陷阱修复（软中断上下文问题、Socket 映射解决方案）
 
 ### 3. 已完成功能
 - **[UDS_IPC_MIGRATION.md](UDS_IPC_MIGRATION.md)** - Unix Domain Socket IPC 迁移
@@ -36,7 +32,6 @@
 ## 📖 其他位置文档
 
 - [主 README](../README.md) - 项目概览和快速开始
-- [使用指南](../README_USAGE.md) - 完整功能说明
 - [快速开始](../QUICKSTART.md) - 5 分钟上手指南
 - [探针示例](../examples/README.md) - 探针开发指南
 - [eBPF 探针项目](../xctl-probe-ebpf/README.md) - eBPF 探针完整文档

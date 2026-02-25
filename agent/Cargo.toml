@@ -1,0 +1,18 @@
+[package]
+name = "xctl"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "xctl"
+path = "src/main.rs"
+
+[dependencies]
+xctl-core = { path = "../core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }

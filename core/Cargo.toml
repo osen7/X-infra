@@ -1,0 +1,11 @@
+[package]
+name = "xctl-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+async-trait = { workspace = true }

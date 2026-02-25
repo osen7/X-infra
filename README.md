@@ -25,12 +25,12 @@ cd X-infra
 cargo build --release
 
 # 3. 启动 daemon（使用 GPU 探针）
-cargo run --release -- run --probe examples/xctl-probe-nvml.py
+cargo run -p xctl --release -- run --probe examples/xctl-probe-nvml.py
 
 # 4. 在另一个终端查询
-cargo run --release -- ps
-cargo run --release -- why <PID>
-cargo run --release -- diag <PID>  # AI 诊断
+cargo run -p xctl --release -- ps
+cargo run -p xctl --release -- why <PID>
+cargo run -p xctl --release -- diag <PID>  # AI 诊断
 ```
 
 详细使用指南请查看 [README_USAGE.md](README_USAGE.md) 和 [QUICKSTART.md](QUICKSTART.md)。
@@ -63,20 +63,38 @@ cargo run --release -- diag <PID>  # AI 诊断
 
 ```
 x-infra/
-├── src/
-│   ├── main.rs          # CLI 入口
-│   ├── event.rs         # 事件定义和事件总线
-│   ├── graph.rs         # 状态图引擎
-│   ├── ipc.rs           # IPC 服务（TCP 9090）
-│   ├── diag.rs          # AI 诊断模块
-│   ├── plugin/          # 探针系统
-│   └── exec/            # 执行器
+├── core/                # 共享底座（事件系统、状态图、规则引擎）
+│   └── src/
+│       ├── event.rs
+│       ├── graph.rs
+│       └── rules/       # 规则引擎实现（代码）
+├── agent/               # 单机节点程序（xctl CLI）
+│   └── src/
+│       ├── main.rs      # CLI 入口
+│       ├── ipc.rs       # IPC 服务（Unix Domain Socket / TCP）
+│       ├── diag.rs      # AI 诊断模块
+│       ├── plugin/      # 探针系统
+│       ├── exec/        # 执行引擎
+│       └── scene/       # 场景分析器
+├── hub/                 # 全局中控（xctl-hub，开发中）
+│   └── src/
+│       └── main.rs
+├── xctl-probe-ebpf/     # eBPF 网络探针（Rust Aya 框架）
+│   ├── xctl-probe-ebpf/         # 用户态程序
+│   └── xctl-probe-ebpf-ebpf/    # 内核态 eBPF 程序
+├── rules/               # YAML 规则文件（配置数据）
+│   ├── workload-stalled.yaml
+│   ├── gpu-oom.yaml
+│   ├── network-stall.yaml
+│   └── ...              # 其他规则文件
 ├── examples/
 │   ├── xctl-probe-nvml.py      # NVIDIA GPU 探针
 │   ├── xctl-probe-network.py    # 网络探针
 │   └── xctl-probe-dummy.py      # 模拟探针
 └── docs/                # 文档
 ```
+
+详细架构说明请查看 [docs/WORKSPACE_ARCHITECTURE.md](docs/WORKSPACE_ARCHITECTURE.md)
 
 ## 🔧 开发
 
@@ -89,18 +107,24 @@ x-infra/
 ### 构建
 
 ```bash
-cargo build --release
+# 构建所有项目
+cargo build --workspace --release
+
+# 或构建单个项目
+cargo build -p xctl --release        # agent
+cargo build -p xctl-hub --release   # hub
+cargo build -p xctl-core --release  # core
 ```
 
 ### 测试
 
 ```bash
 # 运行内置探针测试
-cargo run --release -- run
+cargo run -p xctl --release -- run
 
 # 测试 GPU 探针（需要 NVIDIA GPU）
 pip install pynvml
-cargo run --release -- run --probe examples/xctl-probe-nvml.py
+cargo run -p xctl --release -- run --probe examples/xctl-probe-nvml.py
 ```
 
 ## 🤝 贡献

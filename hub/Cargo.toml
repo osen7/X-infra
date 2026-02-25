@@ -1,0 +1,18 @@
+[package]
+name = "xctl-hub"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "xctl-hub"
+path = "src/main.rs"
+
+[dependencies]
+xctl-core = { path = "../core" }
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
